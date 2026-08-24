@@ -39,6 +39,7 @@ api = [
     "depth: internal P0 plane, not yet a WebGPU texture format",
     "capture: in-memory P0 records only",
     "pixel history: raster-stage events only; pre-raster culls are not yet recorded",
+    "web editor preview: reads three decimal vec2f positions and vec3f colors from the demo; not arbitrary WGSL execution",
 ]
 
 [unsupported]
@@ -91,7 +92,7 @@ wasm_single_thread_build = true
 wasm_multi_thread_build = true
 chromium_single_thread_smoke = true
 chromium_multi_thread_smoke = true
-chromium_demo_hash = "a0a82e251c63beeb"
+chromium_demo_hash = "2898a668a856be56"
 firefox_multi_thread_smoke = false
 safari_single_thread_fallback_smoke = false
 worker_count_matrix_1_2_4_8 = false

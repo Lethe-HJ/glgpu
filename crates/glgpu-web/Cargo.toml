@@ -43,6 +43,7 @@ web-sys = { workspace = true, features = [
     "MouseEvent",
     "Navigator",
     "Node",
+    "Storage",
     "Window",
     "console",
 ] }

@@ -4,6 +4,12 @@
 mod editor_support {
     use std::fmt::Write as _;
 
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct TrianglePreviewInputs {
+        pub positions: [[f32; 2]; 3],
+        pub colors: [[f32; 3]; 3],
+    }
+
     const KEYWORDS: &[&str] = &[
         "alias",
         "break",
@@ -200,6 +206,12 @@ mod editor_support {
         )
     }
 
+    pub fn triangle_preview_inputs(source: &str) -> Result<TrianglePreviewInputs, String> {
+        let positions = parse_vector_binding::<2>(source, "positions", "vec2f")?;
+        let colors = parse_vector_binding::<3>(source, "colors", "vec3f")?;
+        Ok(TrianglePreviewInputs { positions, colors })
+    }
+
     fn push_token(output: &mut String, class_name: &str, text: &str) {
         let _ = write!(output, "<span class=\"{class_name}\">");
         push_escaped(output, text);
@@ -265,6 +277,95 @@ mod editor_support {
         }
         cursor
     }
+
+    fn parse_vector_binding<const COMPONENTS: usize>(
+        source: &str,
+        binding: &str,
+        constructor: &str,
+    ) -> Result<[[f32; COMPONENTS]; 3], String> {
+        let binding_start = source
+            .find(binding)
+            .ok_or_else(|| format!("找不到 `{binding}` 数组"))?;
+        let source_after_binding = &source[binding_start + binding.len()..];
+        let array_start = source_after_binding
+            .find("array")
+            .ok_or_else(|| format!("`{binding}` 必须使用 array(...) 初始化"))?;
+        let array_source = &source_after_binding[array_start..];
+        let open = array_source
+            .find('(')
+            .ok_or_else(|| format!("`{binding}` 的 array 缺少左括号"))?;
+        let close = matching_parenthesis(array_source, open)
+            .ok_or_else(|| format!("`{binding}` 的 array 括号不完整"))?;
+        let body = &array_source[open + 1..close];
+
+        let mut values = Vec::with_capacity(3);
+        let marker = format!("{constructor}(");
+        let mut cursor = 0;
+        while values.len() < 3 {
+            let relative = body[cursor..]
+                .find(&marker)
+                .ok_or_else(|| format!("`{binding}` 需要 3 个 {constructor}(...) 常量"))?;
+            let constructor_start = cursor + relative;
+            let open = constructor_start + constructor.len();
+            let close = matching_parenthesis(body, open)
+                .ok_or_else(|| format!("`{binding}` 中的 {constructor} 括号不完整"))?;
+            let arguments = &body[open + 1..close];
+            let components = arguments
+                .split(',')
+                .map(parse_decimal_literal)
+                .collect::<Result<Vec<_>, _>>()?;
+            if components.len() != COMPONENTS {
+                return Err(format!(
+                    "`{binding}` 中的 {constructor} 需要 {COMPONENTS} 个数字"
+                ));
+            }
+            let value: [f32; COMPONENTS] = components
+                .try_into()
+                .map_err(|_| format!("无法读取 `{binding}` 中的 {constructor}"))?;
+            values.push(value);
+            cursor = close + 1;
+        }
+
+        values
+            .try_into()
+            .map_err(|_| format!("`{binding}` 需要恰好 3 个预览顶点"))
+    }
+
+    fn matching_parenthesis(source: &str, open: usize) -> Option<usize> {
+        if source.as_bytes().get(open) != Some(&b'(') {
+            return None;
+        }
+        let mut depth = 0_u32;
+        for (relative, byte) in source.as_bytes()[open..].iter().copied().enumerate() {
+            match byte {
+                b'(' => depth += 1,
+                b')' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        return Some(open + relative);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn parse_decimal_literal(source: &str) -> Result<f32, String> {
+        let source = source.trim();
+        let source = source
+            .strip_suffix('f')
+            .or_else(|| source.strip_suffix('h'))
+            .unwrap_or(source);
+        let value = source
+            .parse::<f32>()
+            .map_err(|_| format!("CPU 预览暂时只支持十进制常量，无法读取 `{source}`"))?;
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(format!("CPU 预览不接受非有限数字 `{source}`"))
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -273,7 +374,10 @@ mod app {
     use std::fmt::Write as _;
     use std::rc::Rc;
 
-    use super::editor_support::{highlight_wgsl, line_numbers_html, utf8_span_to_utf16_range};
+    use super::editor_support::{
+        TrianglePreviewInputs, highlight_wgsl, line_numbers_html, triangle_preview_inputs,
+        utf8_span_to_utf16_range,
+    };
     use glgpu_canvas2d::present_rgba8;
     use glgpu_core::{Extent2d, PixelCoord, Rgba8, ScreenVertex, Triangle};
     use glgpu_webgpu::{CpuDevice, CpuGpuSubset, DeviceDescriptor};
@@ -282,12 +386,13 @@ mod app {
     use wasm_bindgen::prelude::*;
     use web_sys::{
         CanvasRenderingContext2d, Document, Element, HtmlButtonElement, HtmlCanvasElement,
-        HtmlElement, HtmlTextAreaElement, KeyboardEvent, MouseEvent,
+        HtmlElement, HtmlTextAreaElement, KeyboardEvent, MouseEvent, Storage,
     };
 
     const WIDTH: u32 = 720;
     const HEIGHT: u32 = 480;
     const MAX_WGSL_BYTES: usize = 256 * 1024;
+    const SAVED_WGSL_KEY: &str = "glgpu.wgsl.editor.v1";
     const DEMO_WGSL: &str = include_str!("../../../examples/triangle/p0_triangle.wgsl");
 
     struct DemoState {
@@ -303,6 +408,11 @@ mod app {
         diagnostic_title: HtmlElement,
         diagnostic_detail: HtmlElement,
         diagnostic_panel: HtmlElement,
+        save_status: HtmlElement,
+        storage: Option<Storage>,
+        saved_source: String,
+        has_saved_source: bool,
+        preview: TrianglePreviewInputs,
         selected: PixelCoord,
         parallel: bool,
         wgsl_summary: String,
@@ -311,6 +421,7 @@ mod app {
     impl DemoState {
         fn render(&mut self, selected: PixelCoord) -> Result<(), JsValue> {
             let started = js_sys::Date::now();
+            let vertices = self.preview_vertices();
             let mut encoder = self.device.create_command_encoder();
             encoder
                 .clear(Rgba8::new(13, 18, 30, 255), 1.0)
@@ -319,24 +430,9 @@ mod app {
             encoder
                 .draw_triangle(Triangle::from_vertices(
                     1,
-                    ScreenVertex::new(
-                        WIDTH as f32 * 0.50,
-                        HEIGHT as f32 * 0.10,
-                        0.35,
-                        Rgba8::new(255, 76, 96, 255),
-                    ),
-                    ScreenVertex::new(
-                        WIDTH as f32 * 0.12,
-                        HEIGHT as f32 * 0.88,
-                        0.55,
-                        Rgba8::new(62, 230, 139, 255),
-                    ),
-                    ScreenVertex::new(
-                        WIDTH as f32 * 0.88,
-                        HEIGHT as f32 * 0.88,
-                        0.75,
-                        Rgba8::new(66, 139, 255, 255),
-                    ),
+                    vertices[0],
+                    vertices[1],
+                    vertices[2],
                 ))
                 .map_err(js_error)?;
 
@@ -400,6 +496,19 @@ mod app {
             Ok(())
         }
 
+        fn preview_vertices(&self) -> [ScreenVertex; 3] {
+            std::array::from_fn(|index| {
+                let [x, y] = self.preview.positions[index];
+                let [r, g, b] = self.preview.colors[index];
+                ScreenVertex::new(
+                    (x * 0.5 + 0.5) * WIDTH as f32,
+                    (0.5 - y * 0.5) * HEIGHT as f32,
+                    0.5,
+                    Rgba8::new(color_channel(r), color_channel(g), color_channel(b), 255),
+                )
+            })
+        }
+
         fn refresh_editor(&self) {
             let source = self.editor.value();
             self.highlight.set_inner_html(&highlight_wgsl(&source));
@@ -414,8 +523,9 @@ mod app {
             self.diagnostic_title
                 .set_text_content(Some("代码已修改，等待编译"));
             self.diagnostic_detail.set_text_content(Some(
-                "点击“编译”只进行 WGSL 语法与语义校验；点击“运行”会先编译，再重跑当前 CPU 预览。",
+                "点击“编译”只进行 WGSL 语法与语义校验；点击“运行”会读取示例中的 positions/colors 并重绘 CPU 预览。",
             ));
+            self.update_save_status();
             self.sync_editor_scroll();
         }
 
@@ -460,6 +570,18 @@ mod app {
                 }
             };
 
+            let preview = if run_after_compile {
+                match triangle_preview_inputs(&source) {
+                    Ok(preview) => Some(preview),
+                    Err(message) => {
+                        self.show_preview_error(&message);
+                        return Ok(false);
+                    }
+                }
+            } else {
+                None
+            };
+
             let mut entry_points = Vec::with_capacity(shader.info().entry_points.len());
             for entry in &shader.info().entry_points {
                 entry_points.push(format!(
@@ -495,17 +617,66 @@ mod app {
                 entry_points.join(" · ")
             };
             let detail = if run_after_compile {
-                format!("{entries}\n已重新提交固定 CPU 三角形预览；当前 P0 尚未执行编辑后的 WGSL。")
+                format!(
+                    "{entries}\n已读取 positions/colors 常量并重绘 CPU 三角形；其他 WGSL 控制流尚未由 P0 执行。"
+                )
             } else {
                 format!("{entries}\n仅完成校验；编译操作不会提交新帧。")
             };
             self.diagnostic_detail.set_text_content(Some(&detail));
 
-            if run_after_compile && let Err(error) = self.render(self.selected) {
-                self.show_runtime_error(&error);
-                return Err(error);
+            if let Some(preview) = preview {
+                self.preview = preview;
+                if let Err(error) = self.render(self.selected) {
+                    self.show_runtime_error(&error);
+                    return Err(error);
+                }
             }
             Ok(true)
+        }
+
+        fn save_editor(&mut self) -> Result<bool, JsValue> {
+            let source = self.editor.value();
+            let Some(storage) = &self.storage else {
+                self.save_status.set_class_name("save-status save-error");
+                self.save_status.set_text_content(Some("保存不可用"));
+                return Ok(false);
+            };
+            if let Err(error) = storage.set_item(SAVED_WGSL_KEY, &source) {
+                self.save_status.set_class_name("save-status save-error");
+                self.save_status.set_text_content(Some("保存失败"));
+                return Err(error);
+            }
+            self.saved_source = source;
+            self.has_saved_source = true;
+            self.update_save_status();
+            Ok(true)
+        }
+
+        fn update_save_status(&self) {
+            if self.editor.value() != self.saved_source {
+                self.save_status.set_class_name("save-status save-dirty");
+                self.save_status.set_text_content(Some("未保存"));
+            } else if self.has_saved_source {
+                self.save_status.set_class_name("save-status save-saved");
+                self.save_status.set_text_content(Some("已保存到本机"));
+            } else {
+                self.save_status.set_class_name("save-status");
+                self.save_status.set_text_content(Some("内置示例"));
+            }
+        }
+
+        fn show_preview_error(&self, message: &str) {
+            self.compile_status
+                .set_class_name("compile-status status-error");
+            self.compile_status.set_text_content(Some("预览不支持"));
+            self.diagnostic_panel
+                .set_class_name("diagnostics diagnostics-error");
+            self.diagnostic_title
+                .set_text_content(Some("WGSL 编译通过，但 CPU 预览无法运行"));
+            self.diagnostic_detail.set_text_content(Some(&format!(
+                "{message}\n当前预览支持修改示例中的 3 个 vec2f positions 和 3 个 vec3f colors 十进制常量。"
+            )));
         }
 
         fn show_limit_error(&self, source_bytes: usize) {
@@ -551,6 +722,13 @@ mod app {
         }
 
         let window = web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;
+        let storage = window.local_storage().ok().flatten();
+        let saved_source = storage
+            .as_ref()
+            .and_then(|storage| storage.get_item(SAVED_WGSL_KEY).ok().flatten())
+            .filter(|source| source.len() <= MAX_WGSL_BYTES);
+        let has_saved_source = saved_source.is_some();
+        let initial_source = saved_source.unwrap_or_else(|| DEMO_WGSL.to_owned());
         let document = window
             .document()
             .ok_or_else(|| JsValue::from_str("document is unavailable"))?;
@@ -592,12 +770,32 @@ mod app {
         editor_title.set_text_content(Some("WGSL Shader Editor"));
         let editor_file = element(&document, "div", "editor-file")?;
         editor_file.set_text_content(Some("p0_triangle.wgsl"));
+        let save_status = element(
+            &document,
+            "span",
+            if has_saved_source {
+                "save-status save-saved"
+            } else {
+                "save-status"
+            },
+        )?;
+        save_status.set_attribute("aria-live", "polite")?;
+        save_status.set_text_content(Some(if has_saved_source {
+            "已从本机恢复"
+        } else {
+            "内置示例"
+        }));
         append(&editor_heading, &editor_title)?;
         append(&editor_heading, &editor_file)?;
+        append(&editor_heading, &save_status)?;
 
         let editor_actions = element(&document, "div", "editor-actions")?;
         let compile_status = element(&document, "span", "compile-status status-idle")?;
         compile_status.set_text_content(Some("准备中"));
+        let save_button: HtmlButtonElement = document.create_element("button")?.dyn_into()?;
+        save_button.set_class_name("button button-quiet");
+        save_button.set_text_content(Some("保存"));
+        save_button.set_attribute("title", "保存到当前浏览器（Ctrl/⌘ + S）")?;
         let compile_button: HtmlButtonElement = document.create_element("button")?.dyn_into()?;
         compile_button.set_class_name("button button-secondary");
         compile_button.set_text_content(Some("编译"));
@@ -611,6 +809,7 @@ mod app {
         reset_code.set_text_content(Some("还原"));
         reset_code.set_attribute("title", "还原示例 WGSL")?;
         append(&editor_actions, &compile_status)?;
+        append(&editor_actions, &save_button)?;
         append(&editor_actions, &compile_button)?;
         append(&editor_actions, &run_button)?;
         append(&editor_actions, &reset_code)?;
@@ -622,7 +821,7 @@ mod app {
         boundary_label.set_text_content(Some("P0 执行边界"));
         let boundary_text = element(&document, "span", "")?;
         boundary_text.set_text_content(Some(
-            "编辑内容会由 Naga 编译校验；运行会重提固定 CPU 三角形，当前尚不执行 WGSL。",
+            "运行会用示例中的 positions/colors 常量重绘 CPU 三角形；任意 WGSL 控制流执行仍属于后续阶段。",
         ));
         append(&execution_boundary, &boundary_label)?;
         append(&execution_boundary, &boundary_text)?;
@@ -630,14 +829,14 @@ mod app {
         let editor_body = element(&document, "div", "editor-body")?;
         let line_numbers = element(&document, "pre", "line-numbers")?;
         line_numbers.set_attribute("aria-hidden", "true")?;
-        line_numbers.set_inner_html(&line_numbers_html(DEMO_WGSL, None));
+        line_numbers.set_inner_html(&line_numbers_html(&initial_source, None));
         let editor_surface = element(&document, "div", "editor-surface")?;
         let highlight = element(&document, "pre", "syntax-highlight")?;
         highlight.set_attribute("aria-hidden", "true")?;
-        highlight.set_inner_html(&highlight_wgsl(DEMO_WGSL));
+        highlight.set_inner_html(&highlight_wgsl(&initial_source));
         let editor: HtmlTextAreaElement = document.create_element("textarea")?.dyn_into()?;
         editor.set_class_name("source-editor");
-        editor.set_value(DEMO_WGSL);
+        editor.set_value(&initial_source);
         editor.set_attribute("aria-label", "可编辑的 WGSL shader 源码")?;
         editor.set_attribute("aria-describedby", "wgsl-editor-help")?;
         editor.set_attribute("aria-invalid", "false")?;
@@ -654,7 +853,7 @@ mod app {
         let editor_help = element(&document, "div", "editor-help")?;
         editor_help.set_id("wgsl-editor-help");
         editor_help.set_text_content(Some(
-            "Ctrl/⌘ + Enter 运行 · Ctrl/⌘ + Shift + Enter 仅编译 · 支持语法与语义错误定位",
+            "Ctrl/⌘ + S 保存 · Ctrl/⌘ + Enter 运行 · Ctrl/⌘ + Shift + Enter 仅编译",
         ));
 
         let diagnostic_panel = element(&document, "section", "diagnostics diagnostics-idle")?;
@@ -729,6 +928,7 @@ mod app {
             .request_device(DeviceDescriptor::new(extent).with_parallel(parallel))
             .map_err(js_error)?;
         let selected = PixelCoord::new(WIDTH / 2, HEIGHT / 2);
+        let preview = triangle_preview_inputs(DEMO_WGSL).map_err(js_error)?;
         let state = Rc::new(RefCell::new(DemoState {
             device,
             context,
@@ -742,6 +942,11 @@ mod app {
             diagnostic_title,
             diagnostic_detail,
             diagnostic_panel,
+            save_status,
+            storage,
+            saved_source: initial_source,
+            has_saved_source,
+            preview,
             selected,
             parallel,
             wgsl_summary: "WGSL not compiled".to_owned(),
@@ -761,6 +966,16 @@ mod app {
         });
         editor.add_event_listener_with_callback("scroll", scroll.as_ref().unchecked_ref())?;
         scroll.forget();
+
+        let save_state = Rc::clone(&state);
+        let save_click = Closure::<dyn FnMut()>::new(move || {
+            if let Err(error) = save_state.borrow_mut().save_editor() {
+                web_sys::console::error_1(&error);
+            }
+        });
+        save_button
+            .add_event_listener_with_callback("click", save_click.as_ref().unchecked_ref())?;
+        save_click.forget();
 
         let compile_state = Rc::clone(&state);
         let compile_click = Closure::<dyn FnMut()>::new(move || {
@@ -785,10 +1000,7 @@ mod app {
         let reset_code_click = Closure::<dyn FnMut()>::new(move || {
             let mut state = reset_code_state.borrow_mut();
             state.editor.set_value(DEMO_WGSL);
-            state.highlight.set_inner_html(&highlight_wgsl(DEMO_WGSL));
-            state
-                .line_numbers
-                .set_inner_html(&line_numbers_html(DEMO_WGSL, None));
+            state.refresh_editor();
             if let Err(error) = state.compile_editor(true) {
                 web_sys::console::error_1(&error);
             }
@@ -799,15 +1011,22 @@ mod app {
 
         let keyboard_state = Rc::clone(&state);
         let keyboard = Closure::<dyn FnMut(KeyboardEvent)>::new(move |event: KeyboardEvent| {
-            if event.key() != "Enter" || (!event.ctrl_key() && !event.meta_key()) {
+            if !event.ctrl_key() && !event.meta_key() {
                 return;
             }
-            event.prevent_default();
-            if let Err(error) = keyboard_state
-                .borrow_mut()
-                .compile_editor(!event.shift_key())
-            {
-                web_sys::console::error_1(&error);
+            if event.key().eq_ignore_ascii_case("s") {
+                event.prevent_default();
+                if let Err(error) = keyboard_state.borrow_mut().save_editor() {
+                    web_sys::console::error_1(&error);
+                }
+            } else if event.key() == "Enter" {
+                event.prevent_default();
+                if let Err(error) = keyboard_state
+                    .borrow_mut()
+                    .compile_editor(!event.shift_key())
+                {
+                    web_sys::console::error_1(&error);
+                }
             }
         });
         editor.add_event_listener_with_callback("keydown", keyboard.as_ref().unchecked_ref())?;
@@ -891,7 +1110,15 @@ mod app {
                 .editor-toolbar { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #29334e; background: #10182a; }
                 .editor-heading { min-width: 0; }
                 .editor-heading h2 { margin-bottom: 3px; }
-                .editor-file { color: #7f8ba8; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+                .editor-file { display: inline-block; color: #7f8ba8; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+                .save-status { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: #72809d; font: 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+                .save-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #72809d; }
+                .save-status.save-dirty { color: #f0c56d; }
+                .save-status.save-dirty::before { background: #f0b94d; }
+                .save-status.save-saved { color: #79dca7; }
+                .save-status.save-saved::before { background: #42d487; }
+                .save-status.save-error { color: #ff8da1; }
+                .save-status.save-error::before { background: #ff5a75; }
                 .editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
                 .compile-status { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 5px 9px; border: 1px solid #35405b; border-radius: 999px; background: #111827; color: #aab5cf; font: 700 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: nowrap; }
                 .compile-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #77839f; box-shadow: 0 0 0 3px #77839f20; }
@@ -987,6 +1214,10 @@ mod app {
     fn js_error(error: impl std::fmt::Display) -> JsValue {
         JsValue::from_str(&error.to_string())
     }
+
+    fn color_channel(value: f32) -> u8 {
+        (value.clamp(0.0, 1.0) * 255.0).round() as u8
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1005,7 +1236,9 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 
 #[cfg(test)]
 mod tests {
-    use super::editor_support::{highlight_wgsl, line_numbers_html, utf8_span_to_utf16_range};
+    use super::editor_support::{
+        highlight_wgsl, line_numbers_html, triangle_preview_inputs, utf8_span_to_utf16_range,
+    };
 
     #[test]
     fn highlighter_marks_wgsl_tokens_and_escapes_source() {
@@ -1045,5 +1278,33 @@ mod tests {
         assert!(lines.contains("class=\"line-number is-error\">2"));
         assert_eq!(lines.matches("is-error").count(), 1);
         assert_eq!(lines.matches("class=\"line-number").count(), 3);
+    }
+
+    #[test]
+    fn extracts_triangle_positions_and_colors_from_the_demo_wgsl() {
+        let source = include_str!("../../../examples/triangle/p0_triangle.wgsl");
+        let preview = triangle_preview_inputs(source).expect("demo preview inputs");
+
+        assert_eq!(preview.positions[0], [0.0, 0.75]);
+        assert_eq!(preview.positions[2], [0.75, -0.65]);
+        assert_eq!(preview.colors[0], [1.0, 0.2, 0.2]);
+        assert_eq!(preview.colors[2], [0.2, 0.45, 1.0]);
+    }
+
+    #[test]
+    fn edited_demo_constants_change_the_preview_inputs() {
+        let source = include_str!("../../../examples/triangle/p0_triangle.wgsl")
+            .replace("vec3f(1.0, 0.2, 0.2)", "vec3f(0.1, 0.8, 0.4)");
+        let preview = triangle_preview_inputs(&source).expect("edited preview inputs");
+
+        assert_eq!(preview.colors[0], [0.1, 0.8, 0.4]);
+    }
+
+    #[test]
+    fn preview_reports_valid_wgsl_that_is_outside_the_demo_shape() {
+        let error = triangle_preview_inputs("@compute @workgroup_size(1) fn main() {}")
+            .expect_err("compute-only source has no triangle preview inputs");
+
+        assert!(error.contains("positions"));
     }
 }

@@ -1,7 +1,7 @@
 # GLGPU P0 测试与验收基线
 
 > 状态：P0 执行文档 v0.1  
-> 日期：2026-08-22  
+> 日期：2026-08-24
 > 适用范围：`CpuGpuSubset`、CPU triangle raster、WGSL parse/validate、Canvas 2D ST/MT 演示  
 > 规范与能力边界以 [`spec-lock.toml`](../spec-lock.toml) 和 [`webgpu-p0.toml`](support-matrix/webgpu-p0.toml) 为准
 
@@ -234,7 +234,7 @@ MIME 必须满足：
 | build 标识 | `ST` | `MT` |
 | executor | sequential | Rayon |
 | `crossOriginIsolated` | `true` | `true` |
-| 首帧 hash | `a0a82e251c63beeb` | `a0a82e251c63beeb` |
+| 首帧 hash | `2898a668a856be56` | `2898a668a856be56` |
 | console warning/error | 无 | 无 |
 
 该 hash 是当前 720×480 P0 triangle scene 的证据快照。实现或场景有意改变后可以更新 hash，但同一个候选版本的 ST/MT 仍必须完全一致。
@@ -259,10 +259,12 @@ min(8, max(1, hardwareConcurrency - 1))
 - Canvas 显示带颜色插值的 triangle；
 - 页面明确显示 `CpuGpuSubset — NOT WEBGPU CONFORMANT`；
 - WGSL 编辑器显示完整示例源码，关键字、attribute、类型、数字和注释高亮，源码与高亮层在横纵滚动时保持对齐；
+- `Ctrl/⌘ + S` 和“保存”按钮均阻止浏览器的保存网页动作、将源码写入本地存储，并在刷新后恢复；编辑后状态显示“未保存”；
 - 修改源码后显示“未编译”；默认源码点击“编译”显示 vertex `vs_main` 与 fragment `fs_main` 两个入口点，且 submission serial 不增加；
 - 语法或类型错误显示 Parse/Validation、1-based 行列、源码片段与 caret；错误位置在含中文注释时仍能正确选中；
-- 无效源码点击“运行”不得提交新帧或覆盖上一帧；修复后运行会清除旧错误并使 submission serial 增加；
-- 页面持续说明 P0 只校验编辑后的 WGSL，“运行”重提固定 CPU triangle，不得声称已经执行 shader；
+- 修改示例 `positions` 或 `colors` 十进制常量后运行，Canvas、hash 与 submission serial 都必须更新；
+- 无效源码或无法提取 demo triangle 常量的源码点击“运行”不得提交新帧或覆盖上一帧；修复后运行会清除旧错误并使 submission serial 增加；
+- 页面持续说明 P0 CPU 预览只读取 demo 的 position/color 常量，不得声称已经执行任意 WGSL 控制流；
 - 点击 Canvas 后 selected pixel 坐标与点击位置对应；
 - center pixel 有最终 RGBA/depth 和 primitive history；
 - 不在 triangle 内的 pixel 显示无写入或 coverage 结果；
