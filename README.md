@@ -12,7 +12,7 @@ GLGPU 是一个以 WebGPU 为主线、使用 Rust/WebAssembly 在 CPU 上执行�
 - 顺序执行器与 Rayon tile 并行执行器；
 - 单个选定像素的 raster-stage coverage/depth/color history；
 - Rust-native 非标准 `CpuGpuSubset`、同步 `ImmediateMainOwnerQueue` 和结构化 `Unsupported`；
-- Naga WGSL 核心语法/语义校验及源码位置诊断；
+- 可编辑的 WGSL 调试区、实时语法高亮、Naga 核心语法/语义校验及源码位置诊断；
 - Rust/Wasm 创建页面、样式、事件、Canvas 和调试 UI；
 - stable 单线程 Wasm 包；
 - `wasm-bindgen-rayon` + SharedArrayBuffer 多线程 Wasm 包；
@@ -59,11 +59,13 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 ## 调试页怎么用
 
-1. 页面启动后会立即在 CPU 上绘制一帧彩色三角形。
-2. 顶部 capability 行会显示实际加载的是 `ST` 还是 `MT`。
-3. 指标行显示 submission serial、CPU 执行/呈现耗时、framebuffer hash、执行器和 WGSL 校验范围。
-4. 点击 Canvas 中任意位置，会重新提交同一 command buffer，并记录该像素的 raster-stage history。
-5. `Trace center pixel` 恢复追踪 framebuffer 中心像素。
+1. 页面启动后会校验编辑器中的 WGSL，并立即在 CPU 上绘制一帧彩色三角形。
+2. 编辑 WGSL 时会实时更新语法高亮和行号；点击“编译”进行语法/语义校验，成功时列出入口点，失败时显示诊断类别、行列、源码片段和 caret。
+3. 点击“运行”或按 `Ctrl/⌘ + Enter` 会先校验当前源码；校验成功才重新提交 CPU 预览，失败则保留上一帧。
+4. 顶部 capability 行会显示实际加载的是 `ST` 还是 `MT`，指标行显示 submission serial、CPU 执行/呈现耗时、framebuffer hash、执行器和 WGSL 校验范围。
+5. 点击 Canvas 中任意位置，会重新提交同一 command buffer，并记录该像素的 raster-stage history；“追踪中心像素”恢复追踪 framebuffer 中心像素。
+
+当前 P0 只编译和校验编辑后的 WGSL，并不会执行其中的 vertex/fragment 函数；“运行”重提的是固定 Rust CPU 三角形。页面会持续显示这一边界，避免把预览误认为 shader 执行结果。真正的 WGSL CPU 执行属于 P1 的 IR/bytecode/VM 工作。
 
 页面上的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 是产品契约的一部分，不应移除或改成标准 WebGPU 声明。
 

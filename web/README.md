@@ -33,11 +33,10 @@ cargo xtask serve
 
 ## 修改规则
 
-- UI 和事件修改 `crates/glgpu-web/src/lib.rs`；
+- UI、WGSL 编辑器、高亮、编译诊断和事件修改 `crates/glgpu-web/src/lib.rs`；
 - RGBA8/ImageData 边界修改 `crates/glgpu-canvas2d/src/lib.rs`；
 - loader capability/fallback 修改 `web/index.html`；
 - 构建和 HTTP header 修改 `xtask/src/main.rs`；
 - 修改后必须重建相应 artifact，并按[测试与验收](../docs/testing-and-acceptance.zh-CN.md)复测 ST/MT。
 
 完整工具链、部署和故障排查见[开发指南](../docs/development-guide.zh-CN.md)。
-

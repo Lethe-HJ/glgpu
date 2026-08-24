@@ -258,6 +258,11 @@ min(8, max(1, hardwareConcurrency - 1))
 - `/` 显示 `build=ST`；
 - Canvas 显示带颜色插值的 triangle；
 - 页面明确显示 `CpuGpuSubset — NOT WEBGPU CONFORMANT`；
+- WGSL 编辑器显示完整示例源码，关键字、attribute、类型、数字和注释高亮，源码与高亮层在横纵滚动时保持对齐；
+- 修改源码后显示“未编译”；默认源码点击“编译”显示 vertex `vs_main` 与 fragment `fs_main` 两个入口点，且 submission serial 不增加；
+- 语法或类型错误显示 Parse/Validation、1-based 行列、源码片段与 caret；错误位置在含中文注释时仍能正确选中；
+- 无效源码点击“运行”不得提交新帧或覆盖上一帧；修复后运行会清除旧错误并使 submission serial 增加；
+- 页面持续说明 P0 只校验编辑后的 WGSL，“运行”重提固定 CPU triangle，不得声称已经执行 shader；
 - 点击 Canvas 后 selected pixel 坐标与点击位置对应；
 - center pixel 有最终 RGBA/depth 和 primitive history；
 - 不在 triangle 内的 pixel 显示无写入或 coverage 结果；
