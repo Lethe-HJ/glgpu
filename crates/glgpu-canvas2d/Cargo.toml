@@ -1,0 +1,15 @@
+[package]
+name = "glgpu-canvas2d"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Canvas 2D presentation boundary for GLGPU"
+publish.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+web-sys = { workspace = true, features = [
+    "CanvasRenderingContext2d",
+    "ImageData",
+] }

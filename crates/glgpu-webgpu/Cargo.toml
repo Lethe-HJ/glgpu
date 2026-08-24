@@ -1,0 +1,19 @@
+[package]
+name = "glgpu-webgpu"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+parallel = ["glgpu-raster/parallel"]
+
+[dependencies]
+glgpu-core = { path = "../glgpu-core" }
+glgpu-raster = { path = "../glgpu-raster" }
+glgpu-shader = { path = "../glgpu-shader" }
+glgpu-trace = { path = "../glgpu-trace" }

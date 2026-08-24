@@ -1,0 +1,97 @@
+[profile]
+name = "CpuGpuSubset-P0"
+schema_version = 1
+standard = false
+conformant = false
+presentation = "Canvas2D putImageData"
+api_surface = "Rust-native explicit subset"
+
+[implemented]
+api = [
+    "Rust-native CpuGpuSubset construction",
+    "ImmediateMainOwnerQueue synchronous submit",
+    "RGBA8 clear",
+    "screen-space triangle draw",
+    "depth test with an internal P0 depth plane",
+    "selected-pixel history",
+    "WGSL parse and validation",
+]
+formats = ["rgba8unorm-like internal presentation"]
+threading = [
+    "stable single-thread Wasm artifact",
+    "fixed-nightly wasm-bindgen-rayon artifact",
+    "runtime MT capability preflight and ST fallback",
+]
+debug = [
+    "submission serial and deterministic framebuffer hash",
+    "one selected raster-stage pixel history",
+    "WGSL parse/validation source diagnostics",
+]
+presentation = [
+    "RGBA8 length validation",
+    "ST ImageData direct slice path",
+    "MT SharedArrayBuffer to non-shared Uint8ClampedArray staging",
+]
+
+[partial]
+api = [
+    "tile parallelism: native Rayon and browser-verified wasm-bindgen-rayon build",
+    "depth: internal P0 plane, not yet a WebGPU texture format",
+    "capture: in-memory P0 records only",
+    "pixel history: raster-stage events only; pre-raster culls are not yet recorded",
+]
+
+[unsupported]
+api = [
+    "standard navigator.gpu facade",
+    "asynchronous WebGPU queue timeline",
+    "GPUBuffer mapping semantics",
+    "bind groups and pipeline layouts",
+    "WGSL execution",
+    "compute dispatch",
+    "textures and samplers",
+    "implicit LOD and derivatives",
+    "MSAA, queries, timestamps, external textures",
+]
+
+[intentionally_different]
+api = [
+    "P0 triangle vertices are already in framebuffer coordinates",
+    "P0 submit executes synchronously on the main owner",
+]
+
+[semantics]
+tile_size = 16
+subpixel_bits = 8
+framebuffer_origin = "top-left"
+pixel_sample = "center at x+0.5, y+0.5"
+coverage_rule = "top-left"
+depth_storage = "internal f32 plane"
+depth_compare = "strict less"
+equal_depth_winner = "earliest submitted primitive"
+color_storage = "unpremultiplied RGBA8"
+triangle_order = "input slice order within every tile"
+hash = "FNV-1a over extent, RGBA8 bytes, and exact f32 depth bits"
+
+[browser_profiles]
+single_thread = "required"
+multi_thread = "optional explicit ?threads=1"
+multi_thread_max_workers = 8
+multi_thread_requires = [
+    "crossOriginIsolated",
+    "SharedArrayBuffer",
+    "shared WebAssembly.Memory",
+    "hardwareConcurrency > 1",
+]
+
+[verification]
+native_workspace_tests = true
+native_all_features = true
+wasm_single_thread_build = true
+wasm_multi_thread_build = true
+chromium_single_thread_smoke = true
+chromium_multi_thread_smoke = true
+chromium_demo_hash = "a0a82e251c63beeb"
+firefox_multi_thread_smoke = false
+safari_single_thread_fallback_smoke = false
+worker_count_matrix_1_2_4_8 = false

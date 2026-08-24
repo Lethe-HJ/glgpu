@@ -1,0 +1,20 @@
+[package]
+name = "glgpu-raster"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+parallel = ["dep:rayon"]
+# Convenience alias; `parallel` is the public workspace-facing feature.
+rayon = ["parallel"]
+
+[dependencies]
+glgpu-core = { path = "../glgpu-core" }
+glgpu-trace = { path = "../glgpu-trace" }
+rayon = { workspace = true, optional = true }

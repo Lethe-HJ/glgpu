@@ -1,0 +1,46 @@
+[package]
+name = "glgpu-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+parallel = [
+    "glgpu-raster/parallel",
+    "glgpu-webgpu/parallel",
+    "dep:wasm-bindgen-rayon",
+]
+
+[dependencies]
+glgpu-core = { path = "../glgpu-core" }
+glgpu-raster = { path = "../glgpu-raster" }
+glgpu-trace = { path = "../glgpu-trace" }
+glgpu-webgpu = { path = "../glgpu-webgpu" }
+glgpu-canvas2d = { path = "../glgpu-canvas2d" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook.workspace = true
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-rayon = { workspace = true, optional = true, features = ["no-bundler"] }
+web-sys = { workspace = true, features = [
+    "CanvasRenderingContext2d",
+    "CssStyleDeclaration",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlButtonElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "MouseEvent",
+    "Navigator",
+    "Node",
+    "Window",
+    "console",
+] }

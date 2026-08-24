@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GLGPU WebGPU Debug Lab</title>
+  </head>
+  <body>
+    <main id="app">正在载入 GLGPU Rust/Wasm…</main>
+    <script type="module">
+      const wantsThreads = new URLSearchParams(location.search).get("threads") === "1";
+      const maxRayonWorkers = 8;
+
+      function supportsWasmThreads() {
+        if (
+          !globalThis.crossOriginIsolated ||
+          typeof SharedArrayBuffer === "undefined" ||
+          (navigator.hardwareConcurrency || 1) <= 1
+        ) {
+          return false;
+        }
+        try {
+          const memory = new WebAssembly.Memory({
+            initial: 1,
+            maximum: 1,
+            shared: true,
+          });
+          return memory.buffer instanceof SharedArrayBuffer;
+        } catch {
+          return false;
+        }
+      }
+
+      async function bootSingleThread() {
+        const wasm = await import("./pkg/glgpu_web.js");
+        await wasm.default();
+        wasm.boot(false);
+      }
+
+      async function bootMultiThread() {
+        const wasm = await import("./pkg-mt/glgpu_web.js");
+        await wasm.default();
+        const logicalCpus = navigator.hardwareConcurrency || 1;
+        await wasm.initThreadPool(Math.min(maxRayonWorkers, Math.max(1, logicalCpus - 1)));
+        wasm.boot(true);
+      }
+
+      try {
+        if (wantsThreads && supportsWasmThreads()) {
+          try {
+            await bootMultiThread();
+          } catch (error) {
+            console.warn("GLGPU MT boot failed; falling back to ST", error);
+            await bootSingleThread();
+          }
+        } else {
+          if (wantsThreads) {
+            console.warn("GLGPU MT requested without cross-origin isolation; using ST");
+          }
+          await bootSingleThread();
+        }
+      } catch (error) {
+        console.error("GLGPU boot failed", error);
+        document.querySelector("#app").textContent = `GLGPU 启动失败：${error}`;
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,71 @@
+[lock]
+created = "2026-08-22"
+profile = "P0"
+complete = false
+policy = "Updates require an ADR plus shader snapshots, golden images, and browser smoke tests."
+unlocked_items = [
+    "WHATWG HTML/Canvas exact commit",
+    "GPUWeb CTS exact commit",
+    "WebGPU WebIDL content hash",
+]
+
+[webgpu]
+status = "W3C Candidate Recommendation Draft"
+date = "2026-06-23"
+url = "https://www.w3.org/TR/2026/CRD-webgpu-20260623/"
+
+[wgsl]
+status = "W3C Candidate Recommendation Draft"
+date = "2026-08-17"
+url = "https://www.w3.org/TR/2026/CRD-WGSL-20260817/"
+
+[canvas]
+status = "WHATWG HTML Living Standard; exact commit pending P0 exit"
+url = "https://html.spec.whatwg.org/multipage/canvas.html"
+
+[cts]
+status = "Not yet locked; standard facade is unsupported in P0"
+url = "https://gpuweb.github.io/cts/"
+
+[toolchain]
+rust = "1.93.0"
+wasm_target = "wasm32-unknown-unknown"
+wasm_pack = "0.14.0"
+wasm_bindgen = "0.2.127"
+js_sys = "0.3.104"
+web_sys = "0.3.104"
+wasm_bindgen_rayon = "1.3.0"
+rayon = "1.12.0"
+naga = "30.0.1"
+
+[shader_validation]
+naga_optional_capabilities = "empty"
+wgsl_execution = false
+purpose = "core syntax and semantic validation only"
+
+[profiles.single_thread]
+required = true
+wasm_shared_memory = false
+
+[profiles.multi_thread]
+required = false
+status = "P0 gate"
+nightly = "nightly-2025-11-15"
+wasm_shared_memory = true
+requires_cross_origin_isolation = true
+requires_pinned_nightly_build_std = true
+max_workers = 8
+
+[deferred.webgl]
+production_phase = "P7a+"
+p0_time_budget_max_percent = 20
+allowed_p0_work = [
+    "hand-lowered ESSL-to-project-IR fixtures",
+    "dual RasterConvention goldens",
+    "API-neutral packet and trace provenance fixtures",
+]
+forbidden_p0_work = [
+    "ESSL parser",
+    "WebGL state machine",
+    "WebGL JavaScript facade",
+]

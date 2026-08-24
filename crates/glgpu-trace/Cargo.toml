@@ -1,0 +1,13 @@
+[package]
+name = "glgpu-trace"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+glgpu-core = { path = "../glgpu-core" }
+

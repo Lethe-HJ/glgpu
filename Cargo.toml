@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/glgpu-core",
+    "crates/glgpu-trace",
+    "crates/glgpu-raster",
+    "crates/glgpu-shader",
+    "crates/glgpu-webgpu",
+    "crates/glgpu-canvas2d",
+    "crates/glgpu-web",
+    "xtask",
+]
+default-members = [
+    "crates/glgpu-core",
+    "crates/glgpu-trace",
+    "crates/glgpu-raster",
+    "crates/glgpu-shader",
+    "crates/glgpu-webgpu",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+
+[workspace.dependencies]
+console_error_panic_hook = "=0.1.7"
+js-sys = "=0.3.104"
+naga = { version = "=30.0.1", features = ["wgsl-in"] }
+rayon = "=1.12.0"
+wasm-bindgen = "=0.2.127"
+wasm-bindgen-rayon = "=1.3.0"
+web-sys = "=0.3.104"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+panic = "abort"
