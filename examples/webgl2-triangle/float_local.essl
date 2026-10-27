@@ -1,0 +1,8 @@
+#version 300 es
+uniform float u_scale;
+in float v_in;
+out float v_out;
+void main() {
+  float x = 1.0;
+  float y = x;
+}

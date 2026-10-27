@@ -71,14 +71,31 @@ forbidden_p0_work = [
 ]
 
 [learning_track.webgl2]
-status = "scaffold-only"
+status = "learning-slice"
 goal = "pure CPU from-scratch WebGL2-style stack for learning; no browser-native WebGL or WebGPU"
+stack = "glgpu-webgl only; no dependency on WebGPU-track crates"
 host_webgl = false
 host_webgpu = false
 navigator_gpu = false
 webgl_rendering_context = false
 conformant = false
+jit = false
+compile_path = "ESSL source -> AST -> self-authored bytecode IR -> CPU interpreter"
 changes_product_order = false
 production_phase_unchanged = "P7a+"
 document = "docs/adr/0003-parallel-webgl2-learning-track.md"
 support_matrix = "docs/support-matrix/webgl2-learning.toml"
+
+[learning_track.webgl2.baseline]
+webgl = "Khronos WebGL 2.0.0"
+webgl_date = "2017-04-11"
+webgl_url = "https://registry.khronos.org/webgl/specs/2.0.0/"
+webgl_editors_draft = "https://registry.khronos.org/webgl/specs/latest/2.0/"
+essl = "OpenGL ES Shading Language 3.00.6"
+essl_date = "2016-01-29"
+essl_url = "https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf"
+oracle = "Khronos glslang"
+oracle_version = "16.6.0"
+oracle_url = "https://github.com/KhronosGroup/glslang/releases/tag/16.6.0"
+oracle_role = "external accept/reject reference; not linked or invoked"
+naga_is_essl_frontend = false

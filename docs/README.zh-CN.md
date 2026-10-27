@@ -38,9 +38,9 @@
 | [Architecture plan](architecture-plan.zh-CN.md) | 完整长期技术方案与风险分析 | 当前基线 + 长期规划 |
 | [ADR 0001](adr/0001-webgpu-first.md) | WebGPU-first、Rust-first、WebGL 产品实现延后 | 已接受决策 |
 | [ADR 0002](adr/0002-wasm-build-profiles.md) | stable ST 与 nightly MT 分离 | 已接受决策 |
-| [ADR 0003](adr/0003-parallel-webgl2-learning-track.md) | 并行的纯 CPU WebGL2 学习轨道；只接受脚手架 | 已接受决策 |
-| [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md) | CPU/from-scratch WebGL2 的目标、目录草图和后续步骤 | 脚手架，不是当前实现 |
-| [WebGL2 学习矩阵](support-matrix/webgl2-learning.toml) | 学习轨道能力；当前全部 `not_started` | 是（作为骨架声明） |
+| [ADR 0003](adr/0003-parallel-webgl2-learning-track.md) | 并行的纯 CPU WebGL2 学习轨道；独立栈，不取代 ADR 0001 | 已接受决策 |
+| [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md) | CPU/from-scratch WebGL2 的基线、当前切片和后续步骤 | 学习切片，不是合规实现 |
+| [WebGL2 学习矩阵](support-matrix/webgl2-learning.toml) | 学习轨道能力；implemented / partial / not_started | 是 |
 | [`spec-lock.toml`](../spec-lock.toml) | 规范日期、工具版本、构建 profile | 是 |
 
 ## 当前状态摘要
@@ -61,7 +61,7 @@
 | Compute execution | 未实现 | 范围仍需冻结 |
 | Standard `navigator.gpu` façade | 未实现 | 必须等待 capability/CTS gate |
 | WebGL/ESSL 产品实现 | 延后 | P7a+；ADR 0001 仍然有效 |
-| WebGL2 学习轨道 | 仅脚手架 | 纯 CPU、从零实现；禁止浏览器 WebGL/WebGPU。见 ADR 0003 |
+| WebGL2 学习轨道 | 学习切片 | 独立 CPU 栈：clear、屏幕空间三角形、ESSL 子集、bytecode 和解释器。禁止浏览器 WebGL/WebGPU。见 ADR 0003 |
 
 ## 信息优先级
 

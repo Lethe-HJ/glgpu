@@ -138,7 +138,7 @@ WebGL 前端复用资源、IR/VM、texture sampler、raster 和 trace，但必�
 
 P7a 之前不实现 ESSL parser；P7b 之前不实现 WebGL state machine；P8 之前不实现 WebGL JavaScript façade。上表里的 `DEFERRED` 保持不变。
 
-[ADR 0003](adr/0003-parallel-webgl2-learning-track.md) 另开了一条不改变该产品顺序的并行学习轨道：在 CPU 上从零学习 WebGL2 风格栈，不依赖浏览器 `WebGLRenderingContext` 或 `navigator.gpu`。当前仓库只有 `crates/glgpu-webgl` 骨架和全部 `NotStarted` 的支持矩阵。这不是 P7 开工，也不能把学习笔记引用成已经有 WebGL 实现。说明见 [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md)。
+[ADR 0003](adr/0003-parallel-webgl2-learning-track.md) 另开了一条不改变该产品顺序的并行学习轨道：在 `glgpu-webgl` 里用纯 CPU 从零学习 WebGL2，不依赖浏览器 `WebGLRenderingContext`、`navigator.gpu` 或 WebGPU 轨道 crate。当前切片是 clear、屏幕空间三角形，以及 ESSL 子集到 CPU 解释器。这不是 P7 开工，也不是 WebGL conformant。说明见 [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md)。
 
 ## 下一迭代建议
 
