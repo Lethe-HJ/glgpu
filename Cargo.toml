@@ -6,6 +6,7 @@ members = [
     "crates/glgpu-raster",
     "crates/glgpu-shader",
     "crates/glgpu-webgpu",
+    "crates/glgpu-webgl",
     "crates/glgpu-canvas2d",
     "crates/glgpu-web",
     "xtask",
@@ -16,6 +17,7 @@ default-members = [
     "crates/glgpu-raster",
     "crates/glgpu-shader",
     "crates/glgpu-webgpu",
+    "crates/glgpu-webgl",
 ]
 
 [workspace.package]

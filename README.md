@@ -79,6 +79,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 | `crates/glgpu-raster` | 确定性 tile 光栅器与可选 Rayon executor |
 | `crates/glgpu-shader` | Naga WGSL parse/validate 边界；不暴露 Naga IR |
 | `crates/glgpu-webgpu` | 非标准 Rust-native WebGPU 风格 P0 子集 |
+| `crates/glgpu-webgl` | 纯 CPU WebGL2 学习骨架；全部 `NotStarted`，不调用浏览器 WebGL/WebGPU |
 | `crates/glgpu-canvas2d` | RGBA8 校验与 Canvas 2D 呈现边界 |
 | `crates/glgpu-web` | Rust/Wasm 调试页与交互 |
 | `xtask` | ST/MT 构建和本地隔离服务器 |
@@ -97,6 +98,8 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 - [P0 机器可读支持矩阵](docs/support-matrix/webgpu-p0.toml)
 - [ADR 0001：WebGPU-first](docs/adr/0001-webgpu-first.md)
 - [ADR 0002：ST/MT 双构建](docs/adr/0002-wasm-build-profiles.md)
+- [ADR 0003：并行的纯 CPU WebGL2 学习轨道](docs/adr/0003-parallel-webgl2-learning-track.md)
+- [WebGL2 学习轨道说明](docs/webgl2-learning-track.zh-CN.md)
 - [规范与依赖锁](spec-lock.toml)
 
 ## 正确性与确定性边界
@@ -112,7 +115,9 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 下一里程碑是项目自有 shader IR/字节码与 WGSL lowering，使 vertex/fragment shader 真正在 CPU 上执行；随后再加入资源模型、render pipeline、buffer、bind group、texture/sampler 和版本化 capture schema。异步 owner-worker queue 与 compute 是独立 gate，不会用当前同步 queue 冒充标准语义。
 
-WebGL 继续延后到 P7a+，当前不实现 ESSL parser、WebGL 状态机或 WebGL façade。
+WebGL 的产品实现继续延后到 P7a+。当前主线不实现 ESSL parser、WebGL 状态机或 WebGL façade。
+
+另有一条并行学习轨道，见 [WebGL2 学习轨道](docs/webgl2-learning-track.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl2-learning-track.md)。它的目标是在 CPU 上从零实现 WebGL2 风格栈，不依赖浏览器原生 WebGL 或 WebGPU（没有 `WebGLRenderingContext`，也没有 `navigator.gpu`）。仓库里现在只有骨架和 `NotStarted` 矩阵，不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成已经开工。
 
 ## 许可证状态
 

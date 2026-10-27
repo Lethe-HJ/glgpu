@@ -69,3 +69,16 @@ forbidden_p0_work = [
     "WebGL state machine",
     "WebGL JavaScript facade",
 ]
+
+[learning_track.webgl2]
+status = "scaffold-only"
+goal = "pure CPU from-scratch WebGL2-style stack for learning; no browser-native WebGL or WebGPU"
+host_webgl = false
+host_webgpu = false
+navigator_gpu = false
+webgl_rendering_context = false
+conformant = false
+changes_product_order = false
+production_phase_unchanged = "P7a+"
+document = "docs/adr/0003-parallel-webgl2-learning-track.md"
+support_matrix = "docs/support-matrix/webgl2-learning.toml"

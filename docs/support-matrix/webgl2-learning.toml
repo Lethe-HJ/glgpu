@@ -1,0 +1,44 @@
+[profile]
+name = "CpuWebGl2LearningTrack"
+schema_version = 1
+standard = false
+conformant = false
+implementation = "not-started"
+goal = "pure CPU from-scratch WebGL2-style stack for learning"
+backend = "cpu-from-scratch"
+presentation = "none yet; future frames still go through Canvas2D putImageData"
+api_surface = "Rust-native learning skeleton only"
+product_phase = "P7a+ remains the production gate; this file does not move it"
+banner = "CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT"
+host_webgl = false
+host_webgpu = false
+navigator_gpu = false
+webgl_rendering_context = false
+document = "docs/webgl2-learning-track.zh-CN.md"
+decision = "docs/adr/0003-parallel-webgl2-learning-track.md"
+
+[not_started]
+api = [
+    "CPU WebGL2 context creation",
+    "ESSL 3.00 parser, validator, and lowering",
+    "mutable WebGL state machine",
+    "drawArrays and drawElements",
+    "readPixels",
+    "explicit present of a CPU framebuffer",
+    "JavaScript getContext facade",
+    "browser-native WebGL or WebGPU backend",
+]
+
+[implemented]
+api = []
+
+[partial]
+api = []
+
+[intentionally_different]
+api = []
+
+[notes]
+scope = "Scaffold only. Empty implemented/partial lists are intentional."
+essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00."
+coordinates = "WebGL clip Z is -w..w and the window origin is bottom-left. Those conventions are not implemented in this scaffold."

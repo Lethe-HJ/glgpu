@@ -2,7 +2,8 @@
 
 > 文档版本：P0 / `0.1.0`  
 > 核对日期：2026-08-22  
-> 适用源码：当前 workspace 中的 `glgpu-core`、`glgpu-trace`、`glgpu-raster`、`glgpu-shader`、`glgpu-webgpu`、`glgpu-canvas2d`
+> 适用源码：当前 workspace 中的 `glgpu-core`、`glgpu-trace`、`glgpu-raster`、`glgpu-shader`、`glgpu-webgpu`、`glgpu-canvas2d`  
+> `glgpu-webgl` 不属于本文。它是并行的纯 CPU WebGL2 学习骨架，能力全部为 `NotStarted`，不提供 WebGL façade，也不链接浏览器 `WebGLRenderingContext` 或 `navigator.gpu`。见 [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md)。
 
 本文是当前 P0 实现的逐项 API 参考和可观察行为契约。长期设计、后续阶段和方案取舍见[架构规划](architecture-plan.zh-CN.md)，机器可读的能力声明见 [P0 支持矩阵](support-matrix/webgpu-p0.toml)，构建模式见 [Wasm 构建 ADR](adr/0002-wasm-build-profiles.md)。当规划文档与当前源码行为不一致时，本文只描述已经落地的 P0；最终仍以锁定版本的源码和测试为准。
 
@@ -865,7 +866,7 @@ RGBA byte frame
 - WGSL 指令执行、compute dispatch、workgroup barrier 或原子操作；
 - capture/replay 文件格式、跨版本 trace schema；
 - 完整 pixel history 或 shader 单步；
-- WebGL 1/2 façade 和 GLSL ES；
+- WebGL 1/2 façade 和 GLSL ES（`glgpu-webgl` 只拒绝这些入口，不实现它们）；
 - 与硬件 WebGPU 的性能或逐 bit 结果等价。
 
 这些能力的计划和 gate 以[架构规划](architecture-plan.zh-CN.md)为准；在代码中查询当前运行构建的能力时，应优先使用 `CpuGpuSubset::support_matrix()`，不要根据 feature 名称或文档文字猜测。

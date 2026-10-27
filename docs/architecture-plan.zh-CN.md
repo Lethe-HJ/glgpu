@@ -204,7 +204,7 @@ glgpu/
     glgpu-shader/             # WGSL 主线、后续 ESSL、IR、bytecode、VM
     glgpu-raster/             # clip/setup/bin/raster/depth/stencil/blend
     glgpu-webgpu/             # WebGPU 对象、encoder、queue、验证
-    glgpu-webgl/              # 后续：WebGL 1/2 API、状态机、验证
+    glgpu-webgl/              # 学习骨架已在：纯 CPU、从零的 WebGL2；状态机仍未实现（ADR 0003，产品 gate 仍是 P7b）
     glgpu-trace/              # capture、replay、state diff、pixel history
     glgpu-canvas2d/           # ImageData/OffscreenCanvas 呈现
     glgpu-web/                # wasm-bindgen、web-sys、Rust DOM/UI
@@ -386,6 +386,8 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 ## 9. 后续 WebGL 前端设计
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
+
+并行的学习骨架见 [ADR 0003](adr/0003-parallel-webgl2-learning-track.md) 和 [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md)。那条轨道要求 WebGL2 也在 CPU 上从零实现，不调用浏览器 WebGL 或 WebGPU。骨架不实现本节的状态机，也不把 P7a 提前成产品交付。
 
 ### 9.1 状态与对象
 
@@ -1149,4 +1151,4 @@ compute/barrier 范围）和量化 Q6（参考机器、分辨率、场景与帧�
 建议下一迭代先实现项目自有 shader IR/字节码与 WGSL lowering，让 demo 顶点/片元 shader 真正在 CPU
 执行；随后加入 buffer、bind group、render pipeline、texture/sampler 和 capture schema。owner-worker 与异步
 queue spike 应作为独立 gate，不能把当前同步 `ImmediateMainOwnerQueue` 宣称成标准 WebGPU queue。WebGL
-继续冻结到 P7a+，只保留公共架构兼容检查。
+的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的并行学习轨道只增加纯 CPU 的 WebGL2 骨架，不实现 ESSL、状态机或浏览器后端。
