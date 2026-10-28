@@ -139,7 +139,7 @@ WebGL 前端复用资源、IR/VM、texture sampler、raster 和 trace，但必�
 
 P7a 之前不实现 ESSL parser；P7b 之前不实现 WebGL state machine；P8 之前不实现 WebGL JavaScript façade。上表里的 `DEFERRED` 保持不变。
 
-[ADR 0003](adr/0003-parallel-webgl-mock.md) 另开了一条不改变该产品顺序的 webgl-mock：在 `glgpu-webgl` 里用 CPU 从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext`、`navigator.gpu` 或 webgpu-mock crate。当前子集是 clear、WebGL clip 体积与左下窗口，以及由解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 跑这个 demo，并用 `putImageData` 直接交到页面 canvas。2026-10-28 已决定不使用 OffscreenCanvas：CPU framebuffer 是唯一绘制缓冲；像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程 Canvas 2D。这次不实现 Worker 后端。这不是 P7 开工，也不是 WebGL conformant。说明见 [webgl-mock](webgl-mock.zh-CN.md)。
+[ADR 0003](adr/0003-parallel-webgl-mock.md) 另开了一条不改变该产品顺序的 webgl-mock：在 `glgpu-webgl` 里用 CPU 从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext`、`navigator.gpu` 或 webgpu-mock crate。当前子集是 clear、WebGL clip 体积与左下窗口，以及由解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 跑这个 demo，并用 `putImageData` 直接交到页面 canvas。2026-10-28 已决定：主路径是 SharedArrayBuffer 双缓冲加 Atomics。back 槽是逻辑绘制缓冲，主线程呈现 front 槽。不使用 OffscreenCanvas，三缓冲不是默认。这次不实现 Worker 后端。这不是 P7 开工，也不是 WebGL conformant。说明见 [webgl-mock](webgl-mock.zh-CN.md)。
 
 ## 下一迭代建议
 

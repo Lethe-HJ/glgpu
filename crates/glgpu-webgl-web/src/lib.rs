@@ -6,10 +6,10 @@
 //! does not link the webgpu-mock crates.
 //!
 //! Current state: single-threaded Wasm on the main thread. `putImageData`
-//! copies the frame onto the page canvas. The target drawing buffer stays in
-//! the Worker + Wasm backend. Present is SharedArrayBuffer or a zero-copy
-//! transferable ArrayBuffer to this main thread, then Canvas 2D. There is no
-//! OffscreenCanvas blit. This page does not start that worker.
+//! copies the frame onto the page canvas. The target is one double-buffered
+//! SharedArrayBuffer: the back slot is the drawing buffer, and Atomics hand the
+//! front slot to this main thread for Canvas 2D. There is no OffscreenCanvas
+//! blit. This page does not start that worker.
 //!
 //! The permanent banner stays `webgl-mock — NOT WEBGL CONFORMANT`.
 

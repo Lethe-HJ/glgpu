@@ -2,7 +2,7 @@
 
 本目录不是传统前端应用。`index.html` 只提供站点顶栏、`#app` mount point、ST/MT capability detection 和最小 Wasm 启动逻辑；webgpu-mock 页的 DOM、样式、事件、Canvas 以及调试 UI 由 `crates/glgpu-web` 创建。`webgl.html` 是 webgl-mock 的另一条 Wasm 入口，UI 由 `crates/glgpu-webgl-web` 创建。顶栏点击另一侧会整页重载。
 
-2026-10-28 已决定不使用 OffscreenCanvas。绘制缓冲只在 Worker + Wasm 后端，CPU framebuffer（RGBA8，适用时含 depth）是 hash、测试和像素调试的权威来源。呈现是 SharedArrayBuffer 或零拷贝的可转移 ArrayBuffer 到主线程，再 `putImageData` / `ImageData`。页面 canvas 只呈现。像素载荷不用拷贝式 postMessage。现状不同：webgl-mock demo 页是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas；webgpu-mock 的 Rayon worker 只跑 tile kernel。这次不实现 Worker 后端。
+2026-10-28 已决定：呈现主路径是 SharedArrayBuffer 双缓冲加 Atomics。back 槽是逻辑绘制缓冲，front 槽由主线程 `putImageData` / `ImageData` 呈现。不使用 OffscreenCanvas，三缓冲不是默认。像素载荷不用拷贝式 postMessage。现状不同：webgl-mock demo 页是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas；webgpu-mock 的 Rayon worker 只跑 tile kernel。这次不实现 Worker 后端。
 
 ## 生成目录
 

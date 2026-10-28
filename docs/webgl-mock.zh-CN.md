@@ -13,14 +13,15 @@
 
 ## 线程模型
 
-已决定（2026-10-28）：**不使用 OffscreenCanvas**。此前方案 C 里的 OffscreenCanvas blit 已撤销。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade。这次只锁定方案，不实现 Worker 后端。
+已决定（2026-10-28）：呈现使用一块 **SharedArrayBuffer 双缓冲**。不使用 OffscreenCanvas。此前方案 C 的 OffscreenCanvas blit 已撤销。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade。这次只锁定方案，不实现 Worker 后端。
 
-1. 绘制缓冲只存在于 webgl-mock 后端（Worker + Wasm）。CPU 像素 framebuffer（RGBA8，适用时含 depth）是光栅结果、framebuffer hash、单元测试和像素调试的权威来源，对应原生 WebGL 的 drawing buffer。
-2. 呈现把这些像素用 **SharedArrayBuffer**，或零拷贝的可转移 `ArrayBuffer`，送到主线程。主线程用 Canvas 2D 呈现（`putImageData` / `ImageData`）。没有 OffscreenCanvas blit。
-3. 页面 canvas 只负责呈现。管线不把可见页面 canvas 当作 GL 绘制目标。
-4. 主线程与 Worker 的高效通信只使用 SharedArrayBuffer 或零拷贝转移。像素载荷不用拷贝式 `postMessage`。
+1. 同一块 SharedArrayBuffer 里有两个像素槽。front 给主线程呈现，back 给 Worker 光栅。交接用 Atomics（帧序号，以及哪一块可读）。不把这唯一的缓冲 transfer 走。
+2. 逻辑绘制缓冲就是当前可写的 back 槽，Wasm 视图映射到这个槽。它是光栅结果、framebuffer hash、单元测试和像素调试的权威来源，对应原生 WebGL 的 drawing buffer。不为每一帧再保留一份独立的全帧逻辑 framebuffer 再拷进 SharedArrayBuffer。以后若要离屏 FBO 或非呈现尺寸，才可能另留。
+3. 三缓冲不是默认，只有测到呈现停顿才考虑。
+4. 主线程用 Canvas 2D 呈现 front 槽（`putImageData` / `ImageData`）。`ImageData` 不能直接接收共享视图时，只从当前 front 槽复制，这不是另一份逻辑绘制缓冲。页面 canvas 只负责呈现。管线不把可见页面 canvas 当作 GL 绘制目标。没有 OffscreenCanvas blit。
+5. 高效通信的主路径是这块双缓冲 SharedArrayBuffer 和 Atomics。若以后需要一份副本快照，可以用零拷贝转移；那不是主路径。像素载荷不用拷贝式 `postMessage`。
 
-现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把像素直接交到页面 canvas。还没有 Web API façade，也没有 Worker 后端。这次不实现这条管线。
+现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把像素直接交到页面 canvas。还没有 Web API façade，也没有这块双缓冲 SharedArrayBuffer。这次不实现这条管线。
 
 ## 这条栈做什么
 

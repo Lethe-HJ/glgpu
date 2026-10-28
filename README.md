@@ -1,6 +1,6 @@
 # GLGPU
 
-GLGPU 在 CPU 上做模拟 WebGPU（webgpu-mock）和模拟 WebGL（webgl-mock），不是浏览器里的原生 WebGPU / 原生 WebGL。主线是 webgpu-mock：使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。渲染结果写入 RGBA8 framebuffer。2026-10-28 已决定不使用 OffscreenCanvas：绘制缓冲只在 Worker + Wasm 后端，这份 CPU framebuffer（适用时含 depth）是 hash、测试和像素调试的权威来源。呈现是 SharedArrayBuffer 或零拷贝的可转移 ArrayBuffer 到主线程，再由 Canvas 2D `putImageData` / `ImageData` 呈现。页面 canvas 只呈现，管线不把它当作 GL 绘制目标。像素载荷不用拷贝式 postMessage。WebGL demo 页当前仍是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。这次不实现 Worker 后端。WebGL 产品实现仍等到公共渲染内核、shader 执行和调试模型稳定之后。页面上的三角形是 demo。
+GLGPU 在 CPU 上做模拟 WebGPU（webgpu-mock）和模拟 WebGL（webgl-mock），不是浏览器里的原生 WebGPU / 原生 WebGL。主线是 webgpu-mock：使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。渲染结果写入 RGBA8 framebuffer。2026-10-28 已决定：呈现主路径是一块 SharedArrayBuffer 双缓冲。back 槽是逻辑绘制缓冲，也是 hash、测试和像素调试的权威来源；front 槽交给主线程，用 Canvas 2D `putImageData` / `ImageData` 呈现。交接用 Atomics。不使用 OffscreenCanvas，三缓冲不是默认。页面 canvas 只呈现。像素载荷不用拷贝式 postMessage。WebGL demo 页当前仍是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。这次不实现 Worker 后端。WebGL 产品实现仍等到公共渲染内核、shader 执行和调试模型稳定之后。页面上的三角形是 demo。
 
 > 当前状态：**P0 垂直切片已可运行，但项目不符合 WebGPU 标准，也不是 `navigator.gpu` 的替代实现。**
 
@@ -142,7 +142,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 WebGL 的产品实现继续延后到 P7a+。当前主线不实现 ESSL parser、WebGL 状态机或 WebGL façade。
 
-另有一条并行的 webgl-mock，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 webgpu-mock 的 crate。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 编辑并运行这个 demo，再用 Canvas 2D `putImageData` 直接交到页面 canvas。2026-10-28 已决定不使用 OffscreenCanvas：CPU framebuffer 是唯一绘制缓冲；像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程，再由 Canvas 2D 呈现。这次不实现 Worker 后端。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
+另有一条并行的 webgl-mock，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 webgpu-mock 的 crate。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 编辑并运行这个 demo，再用 Canvas 2D `putImageData` 直接交到页面 canvas。2026-10-28 已决定：主路径是 SharedArrayBuffer 双缓冲加 Atomics。逻辑绘制缓冲是 back 槽，主线程呈现 front 槽。不使用 OffscreenCanvas。这次不实现 Worker 后端。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
 
 ## 许可证状态
 

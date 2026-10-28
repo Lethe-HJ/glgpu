@@ -4,9 +4,9 @@
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. The triangle on the page is a demo.
 //! Today the P0 subset runs in Wasm on the main owner thread and `putImageData`
 //! copies the frame onto the page canvas. Rayon workers, when the MT package is
-//! loaded, only run tile kernels. The target drawing buffer stays in the
-//! Worker plus Wasm backend. Present is SharedArrayBuffer or a zero-copy
-//! transferable ArrayBuffer to this main thread, then Canvas 2D. There is no
+//! loaded, only run tile kernels. The target present path is one
+//! double-buffered SharedArrayBuffer. The back slot is the drawing buffer, and
+//! Atomics hand the front slot to this main thread for Canvas 2D. There is no
 //! OffscreenCanvas blit. This page does not implement that split yet.
 
 #![forbid(unsafe_code)]

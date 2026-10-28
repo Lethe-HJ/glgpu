@@ -3,9 +3,9 @@
 //! This crate intentionally exposes [`CpuGpuSubset`] rather than pretending to
 //! be native WebGPU or a conformant browser `GPUAdapter`. The banner stays
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. Its queue is synchronous and bound to
-//! the creating owner thread. The target drawing buffer stays in the Worker +
-//! Wasm backend. Present is SharedArrayBuffer or a zero-copy transferable
-//! ArrayBuffer to the main thread, then Canvas 2D. There is no OffscreenCanvas
+//! the creating owner thread. The target present path is one double-buffered
+//! SharedArrayBuffer. The back slot is the drawing buffer, and Atomics hand the
+//! front slot to the main thread for Canvas 2D. There is no OffscreenCanvas
 //! blit. The main thread does not receive pixel payloads by a copied
 //! `postMessage`. That split is not this P0
 //! queue. JavaScript/WebIDL objects, promises, error
