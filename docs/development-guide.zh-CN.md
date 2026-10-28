@@ -178,12 +178,15 @@ glgpu/
 │   └── support-matrix/         # P0 矩阵，以及 WebGL2 学习轨道矩阵
 ├── web/
 │   ├── index.html              # 最小 ST/MT loader 和 #app mount point
+│   ├── coop-coep.js            # 仅 Pages 的 MT 入口用来补 COOP/COEP
+│   ├── .nojekyll               # 避免分支式 Pages 走 Jekyll
 │   ├── pkg/                    # ST 生成物；gitignored
 │   └── pkg-mt/                 # MT 生成物及 Rayon worker snippet；gitignored
+├── .github/workflows/pages.yml # 构建 ST/MT 并发布 web/ 到 GitHub Pages
 └── xtask/                      # Rust 编写的构建编排和带隔离头的静态服务器
 ```
 
-不要手工修改 `web/pkg` 或 `web/pkg-mt`。它们是可重建产物并被 `.gitignore` 忽略；源代码改动应落在 Rust crate、`web/index.html` 或 `xtask` 中。
+不要手工修改 `web/pkg` 或 `web/pkg-mt`。它们是可重建产物并被 `.gitignore` 忽略；源代码改动应落在 Rust crate、`web/index.html`、`web/coop-coep.js` 或 `xtask` 中。
 
 根 workspace 设置了 `default-members`，普通 `cargo test` 不会覆盖
 `glgpu-canvas2d`、`glgpu-web` 和 `xtask`。提交前使用 `--workspace`。
@@ -474,7 +477,7 @@ navigator.hardwareConcurrency
 2. 以 `application/wasm` 返回 `.wasm`，以 JavaScript MIME 返回 `.js`。
 3. 同源发布 `index.html`、`pkg`、`pkg-mt` 和 MT 的 `snippets`；若引入跨源资源，需要对应的 CORS/CORP 策略，否则 `require-corp` 会阻止加载。
 4. 将同一次构建生成的 JS、Wasm、类型文件和 worker snippet 原子发布，避免 glue 与 Wasm 版本错配。
-5. 为版本化产物设计一致的缓存失效策略。开发服务器的 `no-store` 不能代替生产部署的版本管理。
+5. 为版本化产物设计一致的缓存失效策略。开发服务器的 `no-store` 不能代替生产部署的版本管理。GitHub Pages 的具体限制和 service worker 见第 11.1 节。
 6. 若增加 Content Security Policy，需要同时覆盖以下边界；仓库当前没有生产 CSP 模板：
    - `script-src` 允许 `'self'`、用 nonce/hash 允许当前 inline module loader，并加入更窄的 `'wasm-unsafe-eval'` 以允许 `WebAssembly.instantiate`/`instantiateStreaming`。只在必须兼容不认识该关键字的旧实现时才考虑更宽的 `'unsafe-eval'`，因为后者也会放开 JavaScript eval。
    - `worker-src` 至少允许 `'self'` 和 `blob:`；`wasm-bindgen-rayon` 的 no-bundler helper 会把同源 helper fetch 为 Blob，再通过 `new Worker(blob:..., { type: "module" })` 启动。
@@ -485,7 +488,50 @@ navigator.hardwareConcurrency
 
 ## 11. 部署流程
 
-仓库当前没有面向某个云厂商的发布脚本。可复现的构建边界如下：
+### 11.1 GitHub Pages
+
+`.github/workflows/pages.yml` 在 `main` 推送和手动运行时构建并发布；pull request 只构建和检查，不部署。发布根目录是 `web/`，其中包含：
+
+```text
+index.html
+coop-coep.js
+.nojekyll
+pkg/glgpu_web.js
+pkg/glgpu_web_bg.wasm
+pkg-mt/glgpu_web.js
+pkg-mt/glgpu_web_bg.wasm
+pkg-mt/snippets/**
+```
+
+CI 安装的工具与本指南的锁一致：Rust `1.93.0`、`wasm-pack 0.14.0`、`wasm-bindgen 0.2.127`，以及带 `rust-src` 的 `nightly-2025-11-15`。ST 用 `cargo xtask build-web --release`，MT 用 `cargo xtask build-web-mt`。
+
+启用站点：
+
+1. 把 workflow 合并到默认分支 `main`。
+2. 打开仓库 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。
+3. 如果第一次 `deploy` 作业因为 Pages 未启用而失败，保存上述设置后重跑 `pages` workflow。
+4. 部署完成后打开项目站点。本仓库是 `Lethe-HJ/glgpu`，地址为 `https://Lethe-HJ.github.io/glgpu/`。仓库改名后，路径改为 `/<仓库名>/`；用户主页仓库 `<user>.github.io` 没有这个前缀。
+
+相对 URL 是项目页的 base path 方案。`index.html` 导入 `./pkg/glgpu_web.js` 和 `./pkg-mt/glgpu_web.js`，生成的 Wasm glue 与 Rayon `no-bundler` helper 使用 `import.meta.url`。因此本地 `http://127.0.0.1:8080/pkg/...` 和 Pages `https://Lethe-HJ.github.io/glgpu/pkg/...` 共用同一份 loader。不要添加 `<base>`，它会让这两种部署解析到不同路径。
+
+GitHub Pages 和 `actions/deploy-pages` 都不能设置 COOP/COEP，`_headers` 在这里无效。直接 `curl -I` 项目站点看不到隔离头，这是平台行为。
+
+页面上的分工是：
+
+| URL | 行为 |
+| --- | --- |
+| `/` 或 `/glgpu/` | 只加载 ST。不注册 service worker |
+| `/?threads=1` 且服务器已隔离 | 直接加载 MT。`cargo xtask serve` 走这里 |
+| `/?threads=1` 且尚未隔离 | 注册 `coop-coep.js`，刷新一次，再加载 MT |
+| 隔离头被浏览器拒绝 | loader 记录警告并加载 ST |
+
+service worker 写入的值与本地服务器相同：`Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Embedder-Policy: require-corp`、缺少时再补 `Cross-Origin-Resource-Policy: same-origin`。响应已经带有前两个头时原样转发。刷新前会暂时加上 `glgpu_isolation=1`，成功隔离后从地址栏去掉，用来在 `sessionStorage` 不可用时防止无限刷新。硬刷新会绕过 worker。无痕模式可能拒绝 service worker，结果同样是 ST。
+
+Pages 上的 MT 是可用路径，不是本地验收的替代品。改 loader、worker 或隔离头后，仍要用 `cargo xtask serve` 对 `/` 和 `/?threads=1` 做 smoke test。
+
+### 11.2 其他静态宿主
+
+可复现的构建边界如下：
 
 ```bash
 cargo test --workspace
@@ -528,7 +574,7 @@ web/pkg-mt/snippets/**
 8. 若修改支持范围，同步更新 `docs/support-matrix/webgpu-p0.toml`；不要把仅在路线图中的能力写成已实现。
 
 Web UI 的 DOM、样式和事件位于 `crates/glgpu-web`；Canvas byte boundary 位于
-`glgpu-canvas2d`；`web/index.html` 应继续只负责 mount point、能力检测、线程池初始化和 ST fallback。不要把业务 UI 迁到手写 JavaScript。
+`glgpu-canvas2d`；`web/index.html` 应继续只负责 mount point、能力检测、线程池初始化和 ST fallback。Pages 上的隔离注册放在 `web/coop-coep.js`。不要把业务 UI 迁到手写 JavaScript。
 
 ## 13. 常见错误与排查
 
