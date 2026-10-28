@@ -207,6 +207,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "glgpu-webgl"
+version = "0.1.0"
+
+[[package]]
 name = "glgpu-webgpu"
 version = "0.1.0"
 dependencies = [

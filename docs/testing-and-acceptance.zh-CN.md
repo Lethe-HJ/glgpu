@@ -5,6 +5,8 @@
 > 适用范围：`CpuGpuSubset`、CPU triangle raster、WGSL parse/validate、Canvas 2D ST/MT 演示  
 > 规范与能力边界以 [`spec-lock.toml`](../spec-lock.toml) 和 [`webgpu-p0.toml`](support-matrix/webgpu-p0.toml) 为准
 
+`glgpu-webgl` 的测试锁定这条独立学习栈：非 WebGL 合规、禁止宿主 WebGL / WebGPU、RGBA8 clear、屏幕空间三角形、ESSL 子集解析，以及 CPU 解释器的单步局部变量记录。那些测试不是 WebGL 验收，也不扩大本文的 P0 范围。
+
 ## 1. 文档目的与判定原则
 
 本文把三类信息严格分开：

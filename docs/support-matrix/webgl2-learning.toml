@@ -1,0 +1,78 @@
+[profile]
+name = "CpuWebGl2LearningTrack"
+schema_version = 1
+standard = false
+conformant = false
+implementation = "learning-slice"
+goal = "pure CPU from-scratch WebGL2-style stack for learning"
+backend = "cpu-from-scratch"
+separate_from_webgpu_crates = true
+presentation = "none; Canvas2D present is not wired"
+api_surface = "Rust-native learning slice inside glgpu-webgl only"
+product_phase = "P7a+ remains the production gate; this file does not move it"
+banner = "CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT"
+host_webgl = false
+host_webgpu = false
+navigator_gpu = false
+webgl_rendering_context = false
+jit = false
+compile_path = "ESSL source -> AST -> self-authored bytecode IR -> CPU interpreter"
+document = "docs/webgl2-learning-track.zh-CN.md"
+decision = "docs/adr/0003-parallel-webgl2-learning-track.md"
+
+[baseline]
+webgl = "Khronos WebGL 2.0.0, 11 April 2017"
+webgl_url = "https://registry.khronos.org/webgl/specs/2.0.0/"
+webgl_editors_draft = "https://registry.khronos.org/webgl/specs/latest/2.0/"
+essl = "OpenGL ES Shading Language 3.00.6, 29 January 2016"
+essl_url = "https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf"
+oracle = "Khronos glslang 16.6.0"
+oracle_url = "https://github.com/KhronosGroup/glslang/releases/tag/16.6.0"
+oracle_role = "external accept/reject reference; not linked or invoked by glgpu-webgl"
+naga_is_essl_frontend = false
+
+[implemented]
+api = [
+    "RGBA8 clear of the CPU learning framebuffer",
+]
+
+[partial]
+api = [
+    "CPU learning context that owns an RGBA8 framebuffer and is not a WebGL2RenderingContext",
+    "one screen-space triangle with vertex colors, sample-center barycentrics, and a top-left origin",
+    "ESSL 3.00 subset lexer, parser, and AST: #version 300 es, uniform/in/out float, void functions, float locals and assignments",
+    "self-authored bytecode IR with a source span on each instruction",
+    "CPU interpreter for load_const and move, recording a local snapshot after each step",
+]
+
+[not_started]
+api = [
+    "drawArrays and drawElements",
+    "mutable WebGL state machine",
+    "clip-space vertex transform",
+    "bottom-left WebGL window origin",
+    "depth test",
+    "ESSL type checking beyond the subset",
+    "glslang oracle wired into CI",
+    "machine-code JIT",
+    "single-step debugger UI",
+    "readPixels",
+    "explicit present to Canvas 2D",
+    "JavaScript getContext facade",
+    "browser-native WebGL or WebGPU backend",
+    "lit rotating cube",
+]
+
+[intentionally_different]
+api = [
+    "the triangle is pre-transformed into framebuffer pixels with a top-left origin so the picture can match the WebGPU P0 demo milestone; it is not WebGL clip space",
+    "coverage is this crate's sample-center barycentric test, not a bit-identical port of the WebGPU rasterizer",
+    "interface variables are retained for a future debugger but cannot be read or written in the subset",
+    "unassigned locals fail at lowering instead of becoming WebGL undefined values",
+]
+
+[notes]
+scope = "Learning slice inside glgpu-webgl. Partial rows are not WebGL entry points."
+essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00. glslang 16.6.0 is the accept/reject reference and is not invoked yet."
+coordinates = "WebGL clip Z is -w..w and the window origin is bottom-left. Those conventions are not implemented."
+debugger = "Instruction spans and per-step local snapshots are the debugger hook. There is no pause control or UI."

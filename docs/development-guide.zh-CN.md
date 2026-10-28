@@ -162,9 +162,11 @@ glgpu/
 │   ├── glgpu-raster/           # 16×16 tile 确定性 CPU 光栅器
 │   ├── glgpu-shader/           # Naga WGSL parse/validate 和诊断边界
 │   ├── glgpu-webgpu/           # Rust-native CpuGpuSubset、encoder、即时 queue
+│   ├── glgpu-webgl/            # 独立 CPU WebGL2 学习栈；不依赖 WebGPU 轨道，无浏览器 GL
 │   ├── glgpu-canvas2d/         # RGBA8 校验和 Canvas ImageData 呈现
 │   └── glgpu-web/              # wasm-bindgen 导出、Rust DOM/UI、P0 demo
 ├── examples/triangle/          # P0 WGSL 输入；当前只解析/验证，不执行
+├── examples/webgl2-triangle/   # ESSL 子集夹具；三角形由 glgpu-webgl 在 CPU 上光栅化
 ├── docs/
 │   ├── README.zh-CN.md         # 中文文档索引
 │   ├── development-guide.zh-CN.md
@@ -173,7 +175,7 @@ glgpu/
 │   ├── architecture-plan.zh-CN.md
 │   ├── roadmap.zh-CN.md
 │   ├── adr/                    # 已接受的架构决策
-│   └── support-matrix/         # P0 implemented/partial/unsupported 矩阵
+│   └── support-matrix/         # P0 矩阵，以及 WebGL2 学习轨道的 not_started 矩阵
 ├── web/
 │   ├── index.html              # 最小 ST/MT loader 和 #app mount point
 │   ├── pkg/                    # ST 生成物；gitignored
