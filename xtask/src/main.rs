@@ -860,6 +860,10 @@ mod tests {
         assert!(index.contains("./coop-coep.js"));
         assert!(index.contains("href=\"./webgl.html\""));
         assert!(index.contains("aria-current=\"page\">WebGPU"));
+        assert!(index.contains("\"./compare-scene.js\""));
+        assert!(index.contains("\"./compare-present.js\""));
+        assert!(index.contains("\"./native-webgpu.js\""));
+        assert!(!index.contains("native-webgl.js"));
         assert!(!index.contains("<base"));
         assert!(!index.contains("github.io"));
 
