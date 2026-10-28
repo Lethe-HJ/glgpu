@@ -114,7 +114,62 @@ impl LearningContext {
         self.pixels.get(index).copied()
     }
 
+    /// Tightly packed RGBA8, row 0 at the top.
+    ///
+    /// Canvas 2D `putImageData` can consume this order without flipping y.
+    pub fn to_rgba8_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.pixels.len().saturating_mul(4));
+        for pixel in &self.pixels {
+            bytes.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
+        }
+        bytes
+    }
+
+    /// FNV-1a of width, height, and tightly packed RGBA8 bytes.
+    ///
+    /// This framebuffer has no depth plane, so the value is not comparable to
+    /// the WebGPU track's hash. The algorithm is local to this crate.
+    pub fn stable_hash64(&self) -> u64 {
+        const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+        let mut hash = OFFSET;
+        let mut mix = |bytes: &[u8]| {
+            for byte in bytes {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(PRIME);
+            }
+        };
+        mix(&self.width.to_le_bytes());
+        mix(&self.height.to_le_bytes());
+        for pixel in &self.pixels {
+            mix(&[pixel.r, pixel.g, pixel.b, pixel.a]);
+        }
+        hash
+    }
+
     pub(crate) fn pixels_mut(&mut self) -> &mut [Rgba8] {
         &mut self.pixels
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgba8_bytes_and_hash_follow_the_stored_pixels() {
+        let mut context = LearningContext::new(2, 1).expect("extent");
+        context.clear(Rgba8::new(13, 18, 30, 255));
+
+        assert_eq!(
+            context.to_rgba8_bytes(),
+            vec![13, 18, 30, 255, 13, 18, 30, 255]
+        );
+        let hash = context.stable_hash64();
+        assert_eq!(hash, context.clone().stable_hash64());
+
+        context.clear(Rgba8::new(0, 0, 0, 255));
+        assert_ne!(hash, context.stable_hash64());
+        assert_eq!(context.to_rgba8_bytes().len(), 8);
     }
 }

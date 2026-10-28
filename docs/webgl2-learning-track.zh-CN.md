@@ -18,7 +18,7 @@ GLGPU 要在 CPU 上把图形 API 从 0 做到 1，用来学习规范，而不�
 
 宿主 GPU 即使以后出现，也只能作为测试 oracle。标识字符串保持 `CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT`。
 
-早期画面目标与 WebGPU P0 相同：清屏加一个彩色三角形。光照旋转立方体晚于这个切片。三角形可以由 CPU 解释器的顶点输出驱动。Clip 体积是 WebGL 的 `-w <= x, y, z <= w`，窗口 y 向上、原点在左下。Framebuffer 第 0 行仍是图像上方，这样 P0 画面不用在呈现时再翻转；换算是 `storage_y = height - window_y`。这是过渡存储，不是 WebGL 窗口原点。`drawArrays` 仍然是 `NotStarted`。
+早期画面目标与 WebGPU P0 相同：清屏加一个彩色三角形。调试页已经能编辑并运行这个三角形。光照旋转立方体晚于这个切片。三角形可以由 CPU 解释器的顶点输出驱动。Clip 体积是 WebGL 的 `-w <= x, y, z <= w`，窗口 y 向上、原点在左下。Framebuffer 第 0 行仍是图像上方，这样 P0 画面不用在呈现时再翻转；换算是 `storage_y = height - window_y`。这是过渡存储，不是 WebGL 窗口原点。`drawArrays` 仍然是 `NotStarted`。
 
 ## 规范基线
 
@@ -57,7 +57,7 @@ ESSL 子集可以解析两个夹具：
 - `void` 函数
 - `float` 局部变量、赋值，以及一次 `*`
 
-没有 `vec4`，也没有 `gl_Position`。接口变量会进入 bytecode。解释器可以读 uniform 和 `in`，可以写 `out`。每条指令带源码 span；每一步记录局部变量，以及 uniform、input、output 的值。单步调试器以后读这些记录；现在没有暂停控制，也没有调试 UI。`out` 不能读。未绑定的 uniform 在执行时报错，而不是变成未定义值。
+没有 `vec4`，也没有 `gl_Position`。接口变量会进入 bytecode。解释器可以读 uniform 和 `in`，可以写 `out`。每条指令带源码 span；每一步记录局部变量，以及 uniform、input、output 的值。调试页会整段运行这段记录所在的解释器，但没有单步暂停。`out` 不能读。未绑定的 uniform 在执行时报错，而不是变成未定义值。
 
 支持矩阵见 [`webgl2-learning.toml`](support-matrix/webgl2-learning.toml)。`require` 只对 `Supported` 成功。Partial 行有对应方法，但不是 WebGL 入口。
 
@@ -71,21 +71,38 @@ crates/glgpu-webgl/                         # 独立栈，零外部依赖，不�
   src/raster.rs                             # 存储坐标三角形，以及 clip / shader 绘制
   src/essl.rs                               # 子集词法、语法、AST、源码 span
   src/vm.rs                                 # bytecode、lowering、CPU 解释器、步骤记录
+crates/glgpu-webgl-web/                     # 调试页 Wasm 壳；只依赖 glgpu-webgl；不是 WebGL façade
 docs/adr/0003-parallel-webgl2-learning-track.md
 docs/webgl2-learning-track.zh-CN.md         # 本文
 docs/support-matrix/webgl2-learning.toml
 examples/webgl2-triangle/p0_vertex.essl     # 驱动三角形的顶点着色器
 examples/webgl2-triangle/float_local.essl   # 只含 load_const / move 的解释器夹具
+web/webgl.html                              # WebGL 调试页 loader
+web/index.html                              # WebGPU 调试页 loader；顶栏链到 webgl.html
 ```
 
-`glgpu-web` 的调试页继续只加载 WebGPU P0。不要在那一页上增加 WebGL2 按钮。
+站点顶栏是 `WebGPU | WebGL`。点另一侧会整页重载，默认仍是 WebGPU。
+
+- `web/index.html` 只启动 `glgpu-web` 的 WGSL / P0 调试页。
+- `web/webgl.html` 只启动 `crates/glgpu-webgl-web`。那个壳只依赖 `glgpu-webgl`，编辑并编译当前 ESSL 子集，再用 CPU 解释器画三角形。画面经 Canvas 2D `putImageData` 呈现，不调用浏览器 WebGL 或 WebGPU。
+- 两条 Wasm 包互不加载。`glgpu-web` 里没有 WebGL 渲染按钮。
+
+本地：
+
+```bash
+cargo xtask build-web --release
+cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
+cargo xtask serve
+```
+
+打开 `/` 与 `/webgl.html`。GitHub Pages 项目站点对应 `/glgpu/` 与 `/glgpu/webgl.html`。链接都是相对 URL，不要加 `<base>`。
 
 ## 下一步
 
 1. 在 native CI 里调用 glslang `16.6.0`，只做 accept/reject 对照，不把它编进 Wasm。
 2. 补 `vec4` / `gl_Position`、透视正确的 varying，以及深度测试。立方体和光照放在这之后。
-3. 调试器 UI。span、逐步局部变量和接口快照已经有了。
-4. mutable state、`drawArrays`、`readPixels` 和 Canvas 2D present。呈现时把存储第 0 行放在图像上方，不要再翻一次 y。
+3. 单步调试器 UI。调试页会整段运行，但没有暂停。span、逐步局部变量和接口快照已经有了。
+4. mutable state、`drawArrays`、`readPixels`，以及 `LearningContext` 自己的 present 方法。调试页已经把存储第 0 行直接交给 Canvas 2D，不再翻一次 y。
 5. JavaScript adapter 放在最后，并且不是浏览器原生 `WebGL2RenderingContext`。
 
 WebGPU 主线的下一程不变：项目自有 shader IR 和 WGSL 的 CPU 执行。两条轨道不共享 crate。

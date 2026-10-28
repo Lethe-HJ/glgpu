@@ -858,8 +858,22 @@ mod tests {
         assert!(index.contains("\"./pkg/glgpu_web.js\""));
         assert!(index.contains("\"./pkg-mt/glgpu_web.js\""));
         assert!(index.contains("./coop-coep.js"));
+        assert!(index.contains("href=\"./webgl.html\""));
+        assert!(index.contains("aria-current=\"page\">WebGPU"));
         assert!(!index.contains("<base"));
         assert!(!index.contains("github.io"));
+
+        let webgl =
+            fs::read_to_string(workspace_root().join("web/webgl.html")).expect("web/webgl.html");
+        assert!(webgl.contains("\"./pkg-webgl/glgpu_webgl_web.js\""));
+        assert!(webgl.contains("href=\"./index.html\""));
+        assert!(webgl.contains("aria-current=\"page\">WebGL"));
+        assert!(webgl.contains("./api-nav.css"));
+        assert!(!webgl.contains("pkg-mt"));
+        assert!(!webgl.contains("coop-coep.js"));
+        assert!(!webgl.contains("<base"));
+        assert!(!webgl.contains("github.io"));
+        assert!(!webgl.contains(r#"import("/"#));
 
         let shim = fs::read_to_string(workspace_root().join("web/coop-coep.js"))
             .expect("web/coop-coep.js");

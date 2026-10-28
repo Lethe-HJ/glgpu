@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GLGPU WebGL Debug Lab</title>
+    <link rel="stylesheet" href="./api-nav.css">
+  </head>
+  <body>
+    <header class="site-nav">
+      <div class="site-nav-inner">
+        <div class="site-nav-brand">GLGPU</div>
+        <nav class="api-switch" aria-label="图形栈">
+          <a href="./index.html">WebGPU</a>
+          <span aria-current="page">WebGL</span>
+        </nav>
+        <p class="site-nav-note">切换会重新加载页面</p>
+      </div>
+    </header>
+    <main id="app">正在载入 GLGPU WebGL 学习轨道…</main>
+    <!--
+      独立于 WebGPU 的 Wasm 入口。相对 URL 同时覆盖本地 `/` 和 GitHub Pages `/<repo>/`。
+      不要添加 base 元素。这一页不加载多线程包，也不注册 Pages 隔离 worker。
+    -->
+    <script type="module">
+      try {
+        const wasm = await import("./pkg-webgl/glgpu_webgl_web.js");
+        await wasm.default();
+        wasm.boot();
+      } catch (error) {
+        console.error("GLGPU WebGL boot failed", error);
+        document.querySelector("#app").textContent = `GLGPU WebGL 启动失败：${error}`;
+      }
+    </script>
+  </body>
+</html>

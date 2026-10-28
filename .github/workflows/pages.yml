@@ -1,4 +1,4 @@
-# Build the ST and MT Wasm debug page and publish web/ to GitHub Pages.
+# Build the WebGPU ST/MT packages and the WebGL learning page, then publish web/.
 # Pages cannot set COOP/COEP. web/coop-coep.js adds those headers for /?threads=1.
 name: pages
 
@@ -75,6 +75,9 @@ jobs:
       - name: Build the stable single-thread package
         run: cargo xtask build-web --release
 
+      - name: Build the WebGL learning-track package
+        run: cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
+
       - name: Install the pinned multi-thread nightly
         run: rustup toolchain install nightly-2025-11-15 --profile minimal --component rust-src --target wasm32-unknown-unknown
 
@@ -85,24 +88,33 @@ jobs:
         run: |
           set -euo pipefail
           test -f web/index.html
+          test -f web/webgl.html
+          test -f web/api-nav.css
           test -f web/coop-coep.js
           test -f web/.nojekyll
           test -f web/pkg/glgpu_web.js
           test -f web/pkg/glgpu_web_bg.wasm
           test -f web/pkg-mt/glgpu_web.js
           test -f web/pkg-mt/glgpu_web_bg.wasm
+          test -f web/pkg-webgl/glgpu_webgl_web.js
+          test -f web/pkg-webgl/glgpu_webgl_web_bg.wasm
           find web/pkg-mt -name workerHelpers.no-bundler.js | grep -q .
           grep -q './pkg/glgpu_web.js' web/index.html
           grep -q './pkg-mt/glgpu_web.js' web/index.html
           grep -q './coop-coep.js' web/index.html
+          grep -q './webgl.html' web/index.html
+          grep -q './pkg-webgl/glgpu_webgl_web.js' web/webgl.html
+          grep -q './index.html' web/webgl.html
+          grep -q './api-nav.css' web/index.html
+          grep -q './api-nav.css' web/webgl.html
           grep -q 'Cross-Origin-Opener-Policy' web/coop-coep.js
           grep -q 'Cross-Origin-Embedder-Policy' web/coop-coep.js
           grep -q 'require-corp' web/coop-coep.js
-          if grep -R -n -E 'from "/|import\("/' web/index.html web/pkg web/pkg-mt --include='*.html' --include='*.js'; then
+          if grep -R -n -E 'from "/|import\("/' web/index.html web/webgl.html web/pkg web/pkg-mt web/pkg-webgl --include='*.html' --include='*.js'; then
             echo "found an absolute import; project Pages need relative URLs" >&2
             exit 1
           fi
-          if grep -n '<base' web/index.html; then
+          if grep -n '<base' web/index.html web/webgl.html; then
             echo "a base tag would retarget local and Pages URLs differently" >&2
             exit 1
           fi

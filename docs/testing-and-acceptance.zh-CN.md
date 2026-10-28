@@ -123,6 +123,7 @@ cargo test -p glgpu-webgpu --features parallel
 ```bash
 cargo xtask build-web --release
 cargo xtask build-web-mt
+cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
 ```
 
 预期产物：
@@ -132,7 +133,11 @@ web/pkg/glgpu_web.js
 web/pkg/glgpu_web_bg.wasm
 web/pkg-mt/glgpu_web.js
 web/pkg-mt/glgpu_web_bg.wasm
+web/pkg-webgl/glgpu_webgl_web.js
+web/pkg-webgl/glgpu_webgl_web_bg.wasm
 ```
+
+`pkg-webgl` 是学习页的独立 ST 包。它不参与 WebGPU 的 ST/MT hash 对比。
 
 `build-web-mt` 是无参数的锁定命令；传入 `--release` 或其他覆盖参数应失败。它必须使用：
 

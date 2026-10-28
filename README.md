@@ -42,18 +42,22 @@ cargo xtask build-web --release
 # 固定 nightly 的共享内存/Rayon 浏览器包
 cargo xtask build-web-mt
 
+# WebGL 学习页的独立 Wasm 包（不进入 WebGPU ST/MT 包）
+cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
+
 # 带跨源隔离响应头的本地服务器
 cargo xtask serve
 ```
 
 打开：
 
-- ST：`http://127.0.0.1:8080/`
-- MT：`http://127.0.0.1:8080/?threads=1`
+- WebGPU ST：`http://127.0.0.1:8080/`
+- WebGPU MT：`http://127.0.0.1:8080/?threads=1`
+- WebGL 学习页：`http://127.0.0.1:8080/webgl.html`（需先构建 `web/pkg-webgl`）
 
 ## GitHub Pages
 
-推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 ST 与 MT 包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
+推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 WebGPU ST、WebGPU MT 和 WebGL 学习页三个包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
 
 ```text
 https://Lethe-HJ.github.io/glgpu/
@@ -61,10 +65,11 @@ https://Lethe-HJ.github.io/glgpu/
 
 启用一次：仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。首次如果部署作业提示 Pages 尚未启用，保存该设置后重跑 `pages` workflow。
 
-- `/` 启动 ST，不注册 service worker。
-- `/?threads=1` 请求 MT。GitHub Pages 不能配置自定义响应头，因此这个入口用同源 [`web/coop-coep.js`](web/coop-coep.js) 补上与 `cargo xtask serve` 相同的 `COOP: same-origin` 和 `COEP: require-corp`，然后自动刷新一次。
+- `/` 启动 WebGPU ST，不注册 service worker。顶栏的 WebGL 链到 `webgl.html`，点击后整页重载。
+- `/webgl.html` 启动独立的 WebGL 学习页 Wasm。它不加载 WebGPU 包，也不注册 `coop-coep.js`。
+- `/?threads=1` 请求 WebGPU MT。GitHub Pages 不能配置自定义响应头，因此这个入口用同源 [`web/coop-coep.js`](web/coop-coep.js) 补上与 `cargo xtask serve` 相同的 `COOP: same-origin` 和 `COEP: require-corp`，然后自动刷新一次。
 - 浏览器不接受 service worker 合成的隔离头时，现有 loader 回退到 ST。硬刷新会绕过 service worker，可能再刷新一次。
-- 页面使用相对 URL，同一份 `index.html` 在本地 `/` 和项目站点 `/glgpu/` 下都能解析。不要加 `<base>`。
+- 页面使用相对 URL。`index.html` 与 `webgl.html` 在本地 `/` 和项目站点 `/glgpu/` 下都能解析。WebGL 页是 `https://Lethe-HJ.github.io/glgpu/webgl.html`。不要加 `<base>`。
 - `cargo xtask serve` 仍由服务器发送真实隔离头。页面已经 `crossOriginIsolated` 时不会注册 service worker，本地 ST/MT 流程不变。
 
 `curl -I https://Lethe-HJ.github.io/glgpu/` 看不到 COOP/COEP。这是 Pages 的平台限制，不是工作流漏了响应头。隔离发生在 `?threads=1` 的第二次文档导航里。本地验收继续用 `cargo xtask serve`。
@@ -98,8 +103,9 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 | `crates/glgpu-shader` | Naga WGSL parse/validate 边界；不暴露 Naga IR |
 | `crates/glgpu-webgpu` | 非标准 Rust-native WebGPU 风格 P0 子集 |
 | `crates/glgpu-webgl` | 独立的纯 CPU WebGL2 学习栈：clear、WebGL clip/窗口、shader 驱动的三角形、ESSL 子集和 CPU 解释器；不是 WebGL 合规实现 |
+| `crates/glgpu-webgl-web` | WebGL 学习页的 Wasm 壳；只依赖 `glgpu-webgl`，用 Canvas 2D 呈现 |
 | `crates/glgpu-canvas2d` | RGBA8 校验与 Canvas 2D 呈现边界 |
-| `crates/glgpu-web` | Rust/Wasm 调试页与交互 |
+| `crates/glgpu-web` | WebGPU Rust/Wasm 调试页与交互 |
 | `xtask` | ST/MT 构建和本地隔离服务器 |
 | `web` | 最小 HTML loader、Pages 隔离 worker；生成包位于被忽略的 `pkg*` 目录 |
 | `.github/workflows/pages.yml` | 构建 ST/MT 并发布到 GitHub Pages |
@@ -136,7 +142,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 WebGL 的产品实现继续延后到 P7a+。当前主线不实现 ESSL parser、WebGL 状态机或 WebGL façade。
 
-另有一条并行学习轨道，见 [WebGL2 学习轨道](docs/webgl2-learning-track.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl2-learning-track.md)。它在 `glgpu-webgl` 里从零实现 WebGL2 风格栈，不依赖浏览器 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 WebGPU 轨道的 crate。当前切片是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
+另有一条并行学习轨道，见 [WebGL2 学习轨道](docs/webgl2-learning-track.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl2-learning-track.md)。它在 `glgpu-webgl` 里从零实现 WebGL2 风格栈，不依赖浏览器 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 WebGPU 轨道的 crate。当前切片是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形。`/webgl.html` 用独立 Wasm 壳编辑并运行这个子集，再用 Canvas 2D 呈现。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
 
 ## 许可证状态
 

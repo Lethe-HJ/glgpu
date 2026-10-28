@@ -211,13 +211,13 @@ impl WebGl2LearningTrack {
             TrackCapability::DrawCall => "drawArrays and drawElements are not implemented",
             TrackCapability::ReadPixels => "synchronous readPixels is not implemented",
             TrackCapability::ExplicitPresent => {
-                "CPU framebuffer present to Canvas 2D is not wired on this track"
+                "LearningContext has no present method. A separate debug page copies RGBA8 with Canvas 2D putImageData; that copy is not a WebGL present entry point"
             }
             TrackCapability::SingleStepDebugger => {
-                "spans, local snapshots, and interface snapshots exist, but there is no debugger UI or pause control"
+                "spans, local snapshots, and interface snapshots exist, but there is no single-step pause UI. The debug page runs the whole frame; it does not step"
             }
             TrackCapability::JavaScriptFacade => {
-                "no JavaScript WebGL facade; these objects are not browser WebGL objects"
+                "no JavaScript WebGL facade. The debug page is a separate Wasm shell, and these objects are not browser WebGL objects"
             }
             TrackCapability::HostWebGlOrWebGpu => {
                 "host WebGLRenderingContext and navigator.gpu are forbidden backends"

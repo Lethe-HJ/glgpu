@@ -205,6 +205,7 @@ glgpu/
     glgpu-raster/             # clip/setup/bin/raster/depth/stencil/blend
     glgpu-webgpu/             # WebGPU 对象、encoder、queue、验证
     glgpu-webgl/              # 独立学习栈：纯 CPU WebGL2 切片；不依赖 WebGPU crate（ADR 0003，产品 gate 仍是 P7b）
+    glgpu-webgl-web/          # WebGL 调试页 Wasm 壳；只依赖 glgpu-webgl
     glgpu-trace/              # capture、replay、state diff、pixel history
     glgpu-canvas2d/           # ImageData/OffscreenCanvas 呈现
     glgpu-web/                # wasm-bindgen、web-sys、Rust DOM/UI

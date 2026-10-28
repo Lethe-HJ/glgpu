@@ -74,6 +74,7 @@ forbidden_p0_work = [
 status = "learning-slice"
 goal = "pure CPU from-scratch WebGL2-style stack for learning; no browser-native WebGL or WebGPU"
 stack = "glgpu-webgl only; no dependency on WebGPU-track crates"
+debug_page = "web/webgl.html boots crates/glgpu-webgl-web; that shell depends only on glgpu-webgl and is not a browser WebGL context"
 host_webgl = false
 host_webgpu = false
 navigator_gpu = false

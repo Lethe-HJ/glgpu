@@ -22,7 +22,7 @@
 6. 早期文字要求以后复用公共 CPU 内核。**这一条已被文末补充决定取代：** 学习轨道保持独立栈，不依赖 WebGPU 轨道的 crate，也不调用浏览器渲染器。
 7. 若要把产品路线从“P7a+ 才实现 WebGL”改成“主线提前交付可运行的 WebGL2”，必须再写一份 ADR。本 ADR 不构成那次重新评估。`spec-lock.toml` 里 `[deferred.webgl]` 的产品阶段和禁止项保持不变。
 
-crate 名沿用架构规划第 6 节已经写过的 `glgpu-webgl`。调试页 `glgpu-web` 继续只服务 P0 WebGPU 路径，避免未实现的 WebGL2 入口出现在现有 UI 上。
+crate 名沿用架构规划第 6 节已经写过的 `glgpu-webgl`。调试页 `glgpu-web` 继续只服务 P0 WebGPU 路径。**“不要在那一页上放 WebGL2 入口”已被文末 2026-10-28 站点切换补充取代：** 站点顶栏在两个独立 HTML 入口之间整页重载，WebGPU Wasm 本身仍然不执行 ESSL。
 
 ## 后果
 
@@ -69,14 +69,23 @@ crate 名沿用架构规划第 6 节已经写过的 `glgpu-webgl`。调试页 `g
 1. `glgpu-webgl` 在本 crate 内做 WebGL clip 体积 `-w <= x, y, z <= w`。近平面是 `z = -w`。窗口原点在左下，y 向上。
 2. Framebuffer 第 0 行仍是图像上方，用来保持和 WebGPU P0 三角形相同的画面朝向。换算是 `storage_y = height - window_y`。这是过渡存储，不是 WebGL 窗口原点。以后的 Canvas 2D present 不应再翻一次 y。
 3. 三角形可以由解释器写出的 `v_clip_*` 和 `v_color_*` 驱动。bytecode 增加 uniform / input 读取、output 写入和一次标量乘法。源码 span、逐步局部变量，以及 uniform / input / output 快照都保留。这仍然不是 `drawArrays`。
-4. 子集仍是标量 float，没有 `vec4` 和 `gl_Position`。没有深度缓冲。光照旋转立方体、状态机、present、`readPixels`、JavaScript façade、调试器 UI、JIT 和 glslang CI 仍未开始。
+4. 子集仍是标量 float，没有 `vec4` 和 `gl_Position`。没有深度缓冲。光照旋转立方体、状态机、present、`readPixels`、JavaScript façade、单步调试器 UI、JIT 和 glslang CI 在该补充写下时仍未开始。同日的站点切换补充允许一个独立的调试页复制 RGBA8，那不是本 crate 的 present 方法。
+
+## 补充决定（2026-10-28，同站 WebGL 调试页）
+
+本补充取代“不要在 WebGPU 调试页上增加 WebGL2 按钮”。不取代 ADR 0001，也不修改 `[deferred.webgl]`。
+
+1. 同一站点的顶栏是 `WebGPU | WebGL`。点另一侧会整页重载。默认仍是 WebGPU：`web/index.html` 只启动 `glgpu-web`。WebGL 是 `web/webgl.html`，只启动 `crates/glgpu-webgl-web`。两条 Wasm 入口互不加载。
+2. `glgpu-webgl-web` 只依赖 `glgpu-webgl`。它不依赖 `glgpu-webgpu`、`glgpu-core`、`glgpu-raster`、`glgpu-shader`、`glgpu-trace`、`glgpu-canvas2d` 或 `glgpu-web`。页面用 Canvas 2D `putImageData` 复制本栈 RGBA8，不调用 `getContext("webgl")`、`getContext("webgl2")` 或 `navigator.gpu`。
+3. 调试页编辑 ESSL 子集，编译失败给出源码位置，运行时用 CPU 解释器画一个与 WebGPU P0 同朝向的彩色三角形。标识保持 `CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT`。这不是 `drawArrays`，不是单步调试器，也不是 JavaScript WebGL façade。`LearningContext` 仍然没有 present 方法。
+4. 链接使用相对 URL，供本地 `/` 和 GitHub Pages 项目站点 `/glgpu/` 共用。不要加 `<base>`。
 
 ## 仍未开始的步骤
 
 1. 把 glslang `16.6.0` 接成 native CI 的 accept/reject oracle，只比较子集内外的接受与拒绝，不把它编译进 Wasm。
 2. 补 `vec4` / `gl_Position`、透视正确的 varying，以及深度测试。立方体和光照晚于这条垂直切片。
-3. 调试器 UI。单步记录已经能覆盖 uniform、vertex input 和 vertex output。
-4. mutable state、`drawArrays` / `drawElements`、`readPixels`、Canvas 2D present。
+3. 单步调试器 UI。调试页会整段运行，但没有暂停或逐步控制。span、逐步局部变量和接口快照已经有了。
+4. mutable state、`drawArrays` / `drawElements`、`readPixels`，以及 `LearningContext` 自己的 present 方法。调试页在壳 crate 里把已经按图像上方存储的 RGBA8 交给 Canvas 2D，不再翻一次 y。
 5. JavaScript 形状的 adapter 放在最后，并且永远不是浏览器原生 `WebGL2RenderingContext`。
 
 叙事说明、目录草图和命令见 [WebGL2 学习轨道](../webgl2-learning-track.zh-CN.md)。机器可读矩阵见 [`webgl2-learning.toml`](../support-matrix/webgl2-learning.toml)。
