@@ -139,7 +139,7 @@ WebGL 前端复用资源、IR/VM、texture sampler、raster 和 trace，但必�
 
 P7a 之前不实现 ESSL parser；P7b 之前不实现 WebGL state machine；P8 之前不实现 WebGL JavaScript façade。上表里的 `DEFERRED` 保持不变。
 
-[ADR 0003](adr/0003-parallel-webgl2-learning-track.md) 另开了一条不改变该产品顺序的并行学习轨道：在 `glgpu-webgl` 里用纯 CPU 从零学习 WebGL2，不依赖浏览器 `WebGLRenderingContext`、`navigator.gpu` 或 WebGPU 轨道 crate。当前切片是 clear、WebGL clip 体积与左下窗口，以及由解释器输出驱动的三角形。`/webgl.html` 用独立 Wasm 壳运行这个切片。这不是 P7 开工，也不是 WebGL conformant。说明见 [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md)。
+[ADR 0003](adr/0003-parallel-webgl-mock.md) 另开了一条不改变该产品顺序的 webgl-mock：在 `glgpu-webgl` 里用 CPU 从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext`、`navigator.gpu` 或 webgpu-mock crate。当前子集是 clear、WebGL clip 体积与左下窗口，以及由解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 跑这个 demo；目标后端是 Worker + Wasm，Canvas 2D 只呈现。这不是 P7 开工，也不是 WebGL conformant。说明见 [webgl-mock](webgl-mock.zh-CN.md)。
 
 ## 下一迭代建议
 

@@ -1,3 +1,12 @@
+//! Debug page for webgpu-mock.
+//!
+//! This is not native WebGPU. The page contract stays
+//! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. The triangle on the page is a demo.
+//! Today the P0 subset runs in Wasm on the main owner thread. Rayon workers,
+//! when the MT package is loaded, only run tile kernels. Canvas 2D presents
+//! the framebuffer. The target is a main-thread Web API façade that messages
+//! a Worker + Wasm backend; this page does not implement that split yet.
+
 #![forbid(unsafe_code)]
 
 #[cfg(any(target_arch = "wasm32", test))]

@@ -1,11 +1,11 @@
-//! WebGL clip volume and window coordinates for the learning track.
+//! WebGL clip volume and window coordinates for webgl-mock.
 //!
 //! Clip space uses the WebGL rule `-w <= x, y, z <= w`, so the near plane is
 //! `z = -w`. After the perspective divide, window x grows right and window y
-//! grows up from the bottom-left corner. This module does not call a browser
-//! GL API and does not use the WebGPU-track crates.
+//! grows up from the bottom-left corner. This module does not call native
+//! WebGL and does not use the webgpu-mock crates.
 //!
-//! The learning framebuffer still stores row 0 as the top image row. That
+//! The CPU framebuffer still stores row 0 as the top image row. That
 //! layout is transitional, so a P0-parity picture matches the WebGPU demo
 //! without a present-time flip. Convert with [`storage_y_from_window_y`].
 

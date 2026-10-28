@@ -1,11 +1,15 @@
-//! Debug page for the CPU WebGL2 learning track.
+//! Demo page for webgl-mock.
 //!
 //! This crate is a second Wasm entry point. It depends only on `glgpu-webgl`
 //! and talks to the browser through Canvas 2D `putImageData`. It does not call
 //! `getContext("webgl")`, `getContext("webgl2")`, or `navigator.gpu`, and it
-//! does not link the WebGPU-track crates.
+//! does not link the webgpu-mock crates.
 //!
-//! The permanent banner stays `CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT`.
+//! Current state: single-threaded Wasm on the main thread. Canvas 2D only
+//! presents the framebuffer. The target is a main-thread Web API façade that
+//! messages a Worker + Wasm backend; this page does not start that worker.
+//!
+//! The permanent banner stays `webgl-mock — NOT WEBGL CONFORMANT`.
 
 #![forbid(unsafe_code)]
 
@@ -21,7 +25,7 @@ mod app {
         self, DEMO_ESSL, MAX_ESSL_BYTES, PREVIEW_HEIGHT, PREVIEW_WIDTH, SAVED_ESSL_KEY,
         format_tracked_pixel, highlight_overlay_html, line_numbers_html, utf8_span_to_utf16_range,
     };
-    use glgpu_webgl::{LearningContext, P0_MILESTONE_CLEAR, WebGl2LearningTrack};
+    use glgpu_webgl::{DemoContext, P0_MILESTONE_CLEAR, WebGlMock};
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::prelude::*;
@@ -31,7 +35,7 @@ mod app {
     };
 
     struct DemoState {
-        context: LearningContext,
+        context: DemoContext,
         canvas_context: CanvasRenderingContext2d,
         canvas: HtmlCanvasElement,
         metrics: HtmlElement,
@@ -302,7 +306,7 @@ mod app {
 
         let header = element(&document, "header", "hero")?;
         let eyebrow = element(&document, "div", "eyebrow")?;
-        eyebrow.set_text_content(Some("CPU WEBGL2 LEARNING TRACK"));
+        eyebrow.set_text_content(Some("WEBGL-MOCK"));
         let title = element(&document, "h1", "")?;
         title.set_text_content(Some("GLGPU WebGL Debug Lab"));
         let subtitle = element(&document, "p", "subtitle")?;
@@ -371,7 +375,7 @@ mod app {
 
         let execution_boundary = element(&document, "div", "execution-boundary")?;
         let boundary_label = element(&document, "strong", "")?;
-        boundary_label.set_text_content(Some("学习切片边界"));
+        boundary_label.set_text_content(Some("Demo 绘制路径"));
         let boundary_text = element(&document, "span", "")?;
         boundary_text.set_text_content(Some(
             "运行会绑定 u_scale=1.0 和示例的三个顶点属性，执行 main，再按 clip 体积 -w..w 光栅化。子集以外的 ESSL 会被拒绝。这不是 drawArrays。",
@@ -442,7 +446,7 @@ mod app {
         canvas.set_width(PREVIEW_WIDTH);
         canvas.set_height(PREVIEW_HEIGHT);
         canvas.set_class_name("viewport");
-        canvas.set_attribute("aria-label", "GLGPU CPU-rendered WebGL learning output")?;
+        canvas.set_attribute("aria-label", "GLGPU webgl-mock triangle demo")?;
         let canvas_context: CanvasRenderingContext2d = canvas
             .get_context("2d")?
             .ok_or_else(|| JsValue::from_str("Canvas 2D context is unavailable"))?
@@ -472,7 +476,7 @@ mod app {
         append(&layout, &preview_column)?;
         append(&root, &layout)?;
 
-        let mut context = WebGl2LearningTrack::new()
+        let mut context = WebGlMock::new()
             .create_context(PREVIEW_WIDTH, PREVIEW_HEIGHT)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         context.clear(P0_MILESTONE_CLEAR);
@@ -636,7 +640,7 @@ mod app {
             js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("SharedArrayBuffer"))
                 .unwrap_or(false);
         format!(
-            "track=CpuWebGl2LearningTrack · build=ST · backend=cpu-from-scratch · crossOriginIsolated={} · SharedArrayBuffer={} · logical CPUs={}",
+            "stack=webgl-mock · thread=main · present=canvas2d · build=ST · backend=cpu-from-scratch · crossOriginIsolated={} · SharedArrayBuffer={} · logical CPUs={}",
             isolated,
             has_shared_array_buffer,
             window.navigator().hardware_concurrency(),

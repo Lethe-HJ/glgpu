@@ -1,4 +1,4 @@
-# Build the WebGPU ST/MT packages and the WebGL learning page, then publish web/.
+# Build the WebGPU ST/MT packages and the WebGL demo page, then publish web/.
 # Pages cannot set COOP/COEP. web/coop-coep.js adds those headers for /?threads=1.
 name: pages
 
@@ -75,7 +75,7 @@ jobs:
       - name: Build the stable single-thread package
         run: cargo xtask build-web --release
 
-      - name: Build the WebGL learning-track package
+      - name: Build the WebGL CPU demo package
         run: cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
 
       - name: Install the pinned multi-thread nightly

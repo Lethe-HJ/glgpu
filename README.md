@@ -1,6 +1,6 @@
 # GLGPU
 
-GLGPU 是一个以 WebGPU 为主线、使用 Rust/WebAssembly 在 CPU 上执行的确定性参考渲染器与图形调试器。渲染结果写入 RGBA8 framebuffer，最终只通过 Canvas 2D `ImageData` / `putImageData` 呈现。WebGL 将在公共渲染内核、shader 执行和调试模型稳定后再支持。
+GLGPU 在 CPU 上做模拟 WebGPU（webgpu-mock）和模拟 WebGL（webgl-mock），不是浏览器里的原生 WebGPU / 原生 WebGL。主线是 webgpu-mock：使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。渲染结果写入 RGBA8 framebuffer，最终只通过 Canvas 2D `ImageData` / `putImageData` 呈现。Canvas 2D 只是呈现器。目标线程模型是主线程 Web API façade 用高效消息调用 Worker + Wasm 后端；WebGL demo 页当前仍是主线程上的单线程 Wasm。WebGL 产品实现仍等到公共渲染内核、shader 执行和调试模型稳定之后。页面上的三角形是 demo。
 
 > 当前状态：**P0 垂直切片已可运行，但项目不符合 WebGPU 标准，也不是 `navigator.gpu` 的替代实现。**
 
@@ -42,7 +42,7 @@ cargo xtask build-web --release
 # 固定 nightly 的共享内存/Rayon 浏览器包
 cargo xtask build-web-mt
 
-# WebGL 学习页的独立 Wasm 包（不进入 WebGPU ST/MT 包）
+# webgl-mock demo 页的独立 Wasm 包（不进入 webgpu-mock 的 ST/MT 包）
 cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
 
 # 带跨源隔离响应头的本地服务器
@@ -51,13 +51,13 @@ cargo xtask serve
 
 打开：
 
-- WebGPU ST：`http://127.0.0.1:8080/`
-- WebGPU MT：`http://127.0.0.1:8080/?threads=1`
-- WebGL 学习页：`http://127.0.0.1:8080/webgl.html`（需先构建 `web/pkg-webgl`）
+- webgpu-mock ST：`http://127.0.0.1:8080/`
+- webgpu-mock MT：`http://127.0.0.1:8080/?threads=1`
+- webgl-mock demo 页：`http://127.0.0.1:8080/webgl.html`（需先构建 `web/pkg-webgl`；当前是主线程单线程 Wasm）
 
 ## GitHub Pages
 
-推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 WebGPU ST、WebGPU MT 和 WebGL 学习页三个包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
+推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 webgpu-mock ST、webgpu-mock MT 和 webgl-mock demo 页三个包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
 
 ```text
 https://Lethe-HJ.github.io/glgpu/
@@ -65,8 +65,8 @@ https://Lethe-HJ.github.io/glgpu/
 
 启用一次：仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。首次如果部署作业提示 Pages 尚未启用，保存该设置后重跑 `pages` workflow。
 
-- `/` 启动 WebGPU ST，不注册 service worker。顶栏的 WebGL 链到 `webgl.html`，点击后整页重载。
-- `/webgl.html` 启动独立的 WebGL 学习页 Wasm。它不加载 WebGPU 包，也不注册 `coop-coep.js`。
+- `/` 启动 webgpu-mock ST，不注册 service worker。顶栏的 WebGL 链到 `webgl.html`，点击后整页重载。
+- `/webgl.html` 启动独立的 webgl-mock demo 页 Wasm，当前跑在主线程。它不加载 webgpu-mock 包，也不注册 `coop-coep.js`。
 - `/?threads=1` 请求 WebGPU MT。GitHub Pages 不能配置自定义响应头，因此这个入口用同源 [`web/coop-coep.js`](web/coop-coep.js) 补上与 `cargo xtask serve` 相同的 `COOP: same-origin` 和 `COEP: require-corp`，然后自动刷新一次。
 - 浏览器不接受 service worker 合成的隔离头时，现有 loader 回退到 ST。硬刷新会绕过 service worker，可能再刷新一次。
 - 页面使用相对 URL。`index.html` 与 `webgl.html` 在本地 `/` 和项目站点 `/glgpu/` 下都能解析。WebGL 页是 `https://Lethe-HJ.github.io/glgpu/webgl.html`。不要加 `<base>`。
@@ -101,9 +101,9 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 | `crates/glgpu-trace` | P0 像素追踪记录 |
 | `crates/glgpu-raster` | 确定性 tile 光栅器与可选 Rayon executor |
 | `crates/glgpu-shader` | Naga WGSL parse/validate 边界；不暴露 Naga IR |
-| `crates/glgpu-webgpu` | 非标准 Rust-native WebGPU 风格 P0 子集 |
-| `crates/glgpu-webgl` | 独立的纯 CPU WebGL2 学习栈：clear、WebGL clip/窗口、shader 驱动的三角形、ESSL 子集和 CPU 解释器；不是 WebGL 合规实现 |
-| `crates/glgpu-webgl-web` | WebGL 学习页的 Wasm 壳；只依赖 `glgpu-webgl`，用 Canvas 2D 呈现 |
+| `crates/glgpu-webgpu` | webgpu-mock：非标准 WebGPU 风格 P0 子集。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT` |
+| `crates/glgpu-webgl` | webgl-mock：clear、WebGL clip/窗口、shader 驱动的三角形 demo、ESSL 子集和 CPU 解释器；不是原生 WebGL，也不是合规实现 |
+| `crates/glgpu-webgl-web` | webgl-mock demo 页的 Wasm 壳；当前在主线程跑单线程 Wasm，只用 Canvas 2D 呈现 |
 | `crates/glgpu-canvas2d` | RGBA8 校验与 Canvas 2D 呈现边界 |
 | `crates/glgpu-web` | WebGPU Rust/Wasm 调试页与交互 |
 | `xtask` | ST/MT 构建和本地隔离服务器 |
@@ -123,8 +123,8 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 - [P0 机器可读支持矩阵](docs/support-matrix/webgpu-p0.toml)
 - [ADR 0001：WebGPU-first](docs/adr/0001-webgpu-first.md)
 - [ADR 0002：ST/MT 双构建](docs/adr/0002-wasm-build-profiles.md)
-- [ADR 0003：并行的纯 CPU WebGL2 学习轨道](docs/adr/0003-parallel-webgl2-learning-track.md)
-- [WebGL2 学习轨道说明](docs/webgl2-learning-track.zh-CN.md)
+- [ADR 0003：并行的 webgl-mock](docs/adr/0003-parallel-webgl-mock.md)
+- [webgl-mock](docs/webgl-mock.zh-CN.md)
 - [规范与依赖锁](spec-lock.toml)
 
 ## 正确性与确定性边界
@@ -142,7 +142,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 WebGL 的产品实现继续延后到 P7a+。当前主线不实现 ESSL parser、WebGL 状态机或 WebGL façade。
 
-另有一条并行学习轨道，见 [WebGL2 学习轨道](docs/webgl2-learning-track.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl2-learning-track.md)。它在 `glgpu-webgl` 里从零实现 WebGL2 风格栈，不依赖浏览器 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 WebGPU 轨道的 crate。当前切片是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形。`/webgl.html` 用独立 Wasm 壳编辑并运行这个子集，再用 Canvas 2D 呈现。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
+另有一条并行的 webgl-mock，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 webgpu-mock 的 crate。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 编辑并运行这个 demo，再用 Canvas 2D 呈现；目标后端是 Worker + Wasm，这次没有迁移。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
 
 ## 许可证状态
 

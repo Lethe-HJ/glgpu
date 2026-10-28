@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Wasm debug page for the CPU WebGL2 learning track. Not a browser WebGL context."
+description = "Wasm demo page for webgl-mock. Not a native WebGL context. Current build runs single-threaded Wasm on the main thread and presents with Canvas 2D."
 
 [lib]
 crate-type = ["cdylib", "rlib"]

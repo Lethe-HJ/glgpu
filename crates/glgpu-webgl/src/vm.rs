@@ -275,7 +275,7 @@ fn push_local(
     span: SourceSpan,
 ) -> Result<u16, LowerError> {
     let slot = u16::try_from(locals.len())
-        .map_err(|_| lower_error("too many locals for the learning bytecode", span))?;
+        .map_err(|_| lower_error("too many locals for the bytecode", span))?;
     locals.push(LocalBuilder {
         name: name.to_string(),
         span,

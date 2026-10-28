@@ -1,8 +1,11 @@
-//! Non-standard, Rust-native WebGPU-style P0 façade.
+//! webgpu-mock: a non-standard WebGPU-style P0 façade running on the CPU.
 //!
 //! This crate intentionally exposes [`CpuGpuSubset`] rather than pretending to
-//! be a conformant browser `GPUAdapter`. Its queue is synchronous and bound to
-//! the creating owner thread. JavaScript/WebIDL objects, promises, error
+//! be native WebGPU or a conformant browser `GPUAdapter`. The banner stays
+//! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. Its queue is synchronous and bound to
+//! the creating owner thread. The target split is a main-thread Web API façade
+//! messaging a Worker + Wasm backend, with Canvas 2D only presenting. That
+//! split is not this P0 queue. JavaScript/WebIDL objects, promises, error
 //! scopes, and standard asynchronous queue semantics are explicitly outside
 //! this P0 contract.
 

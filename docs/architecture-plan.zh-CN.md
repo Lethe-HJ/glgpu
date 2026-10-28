@@ -20,7 +20,7 @@
 - 本地 Chromium 实测 ST/MT 均绘制同一帧 hash，MT 确认使用 Rayon executor，控制台无错误。
 
 尚未实现资源/绑定组/纹理、WGSL lowering 与执行 VM、异步 queue timeline、owner worker、compute、标准
-`navigator.gpu` façade、capture/replay 文件格式和 WebGL。它们仍按后文 P1–P9 gate 推进。
+`navigator.gpu` façade、capture/replay 文件格式，以及路线图上的 WebGL 产品实现。它们仍按后文 P1–P9 gate 推进。`glgpu-webgl` 是独立的 CPU 可视化栈，不把 P7 标成已经开工。
 
 与当前代码直接对应的交接文档：
 
@@ -204,7 +204,7 @@ glgpu/
     glgpu-shader/             # WGSL 主线、后续 ESSL、IR、bytecode、VM
     glgpu-raster/             # clip/setup/bin/raster/depth/stencil/blend
     glgpu-webgpu/             # WebGPU 对象、encoder、queue、验证
-    glgpu-webgl/              # 独立学习栈：纯 CPU WebGL2 切片；不依赖 WebGPU crate（ADR 0003，产品 gate 仍是 P7b）
+    glgpu-webgl/              # webgl-mock：CPU WebGL2 子集；不依赖 webgpu-mock crate（ADR 0003，产品 gate 仍是 P7b）
     glgpu-webgl-web/          # WebGL 调试页 Wasm 壳；只依赖 glgpu-webgl
     glgpu-trace/              # capture、replay、state diff、pixel history
     glgpu-canvas2d/           # ImageData/OffscreenCanvas 呈现
@@ -388,7 +388,7 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
 
-并行的学习切片见 [ADR 0003](adr/0003-parallel-webgl2-learning-track.md) 和 [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md)。那条轨道在独立 crate 里用 CPU 从零实现 WebGL2，不调用浏览器 WebGL 或 WebGPU，也不依赖 WebGPU 轨道的 crate。它还没有本节的状态机，也不把 P7a 提前成产品交付。
+并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm；目标是主线程 Web API façade 消息 Worker + Wasm 后端，Canvas 2D 只呈现。它还没有本节的状态机，也不把 P7a 提前成产品交付。
 
 ### 9.1 状态与对象
 
@@ -1152,4 +1152,4 @@ compute/barrier 范围）和量化 Q6（参考机器、分辨率、场景与帧�
 建议下一迭代先实现项目自有 shader IR/字节码与 WGSL lowering，让 demo 顶点/片元 shader 真正在 CPU
 执行；随后加入 buffer、bind group、render pipeline、texture/sampler 和 capture schema。owner-worker 与异步
 queue spike 应作为独立 gate，不能把当前同步 `ImmediateMainOwnerQueue` 宣称成标准 WebGPU queue。WebGL
-的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的并行学习轨道在独立的 `glgpu-webgl` 里推进纯 CPU 切片，不调用浏览器后端，也不并入 WebGPU 轨道 crate。
+的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm。

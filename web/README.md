@@ -1,6 +1,8 @@
 # Web 运行边界
 
-本目录不是传统前端应用。`index.html` 只提供站点顶栏、`#app` mount point、ST/MT capability detection 和最小 Wasm 启动逻辑；WebGPU 页的 DOM、样式、事件、Canvas 以及调试 UI 由 `crates/glgpu-web` 创建。`webgl.html` 是另一条 Wasm 入口，UI 由 `crates/glgpu-webgl-web` 创建。顶栏点击另一侧会整页重载。
+本目录不是传统前端应用。`index.html` 只提供站点顶栏、`#app` mount point、ST/MT capability detection 和最小 Wasm 启动逻辑；webgpu-mock 页的 DOM、样式、事件、Canvas 以及调试 UI 由 `crates/glgpu-web` 创建。`webgl.html` 是 webgl-mock 的另一条 Wasm 入口，UI 由 `crates/glgpu-webgl-web` 创建。顶栏点击另一侧会整页重载。
+
+目标线程模型是：主线程暴露 Web API façade，用高效消息调用 Worker + Wasm 后端；Canvas 2D 只呈现 framebuffer。现状不同：webgl-mock demo 页是主线程上的单线程 Wasm，webgpu-mock 的 Rayon worker 只跑 tile kernel。这次没有把 demo 迁到 Worker。
 
 ## 生成目录
 
@@ -8,7 +10,7 @@
 | --- | --- | --- |
 | `web/pkg` | `cargo xtask build-web --release` | WebGPU stable ST |
 | `web/pkg-mt` | `cargo xtask build-web-mt` | WebGPU fixed-nightly SharedArrayBuffer + Rayon |
-| `web/pkg-webgl` | `cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web` | WebGL 学习页 ST |
+| `web/pkg-webgl` | `cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web` | webgl-mock demo 页，主线程 ST |
 
 三个目录都是生成物，已写入 `.gitignore`，不能手工修改其中的 JavaScript、Wasm、TypeScript declaration 或 worker snippet。
 
@@ -21,7 +23,7 @@ cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg
 cargo xtask serve
 ```
 
-打开 `/` 使用 WebGPU ST；打开 `/?threads=1` 请求 WebGPU MT；打开 `/webgl.html` 使用 WebGL 学习页。MT loader 检查跨源隔离、SharedArrayBuffer、共享 WebAssembly memory 和 CPU 数，最多初始化 8 个 worker。检测或初始化失败会回退到独立 ST 包。WebGL 页没有 MT 包。
+打开 `/` 使用 webgpu-mock ST；打开 `/?threads=1` 请求 webgpu-mock MT；打开 `/webgl.html` 使用 webgl-mock demo 页。MT loader 检查跨源隔离、SharedArrayBuffer、共享 WebAssembly memory 和 CPU 数，最多初始化 8 个 worker。检测或初始化失败会回退到独立 ST 包。webgl-mock 页没有 MT 包，也没有 Worker 后端。
 
 不要直接使用不带响应头的通用静态服务器测试 MT。`cargo xtask serve` 会为 HTML、JavaScript、Wasm 和 worker helper 统一发送 COOP/COEP/CORP，并为 `.wasm` 返回 `application/wasm`。
 
@@ -40,7 +42,7 @@ GitHub Pages 不能发送 COOP/COEP。`coop-coep.js` 只在 URL 带 `threads=1` 
 ## 修改规则
 
 - WebGPU UI、WGSL 编辑器、高亮、本地保存、CPU demo 预览、编译诊断和事件修改 `crates/glgpu-web/src/lib.rs`；
-- WebGL 学习页 UI 和 ESSL 编辑器修改 `crates/glgpu-webgl-web`；不要把它连到 WebGPU crate；
+- webgl-mock demo 页 UI 和 ESSL 编辑器修改 `crates/glgpu-webgl-web`；不要把它连到 webgpu-mock crate；
 - WebGPU RGBA8/ImageData 边界修改 `crates/glgpu-canvas2d/src/lib.rs`；WebGL 页在自己的壳里复制像素；
 - loader capability/fallback 修改 `web/index.html`；WebGL loader 修改 `web/webgl.html`；
 - 顶栏样式修改 `web/api-nav.css`；
