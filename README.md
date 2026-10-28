@@ -79,7 +79,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 | `crates/glgpu-raster` | 确定性 tile 光栅器与可选 Rayon executor |
 | `crates/glgpu-shader` | Naga WGSL parse/validate 边界；不暴露 Naga IR |
 | `crates/glgpu-webgpu` | 非标准 Rust-native WebGPU 风格 P0 子集 |
-| `crates/glgpu-webgl` | 独立的纯 CPU WebGL2 学习栈：clear、屏幕空间三角形、ESSL 子集和 CPU 解释器；不是 WebGL 合规实现 |
+| `crates/glgpu-webgl` | 独立的纯 CPU WebGL2 学习栈：clear、WebGL clip/窗口、shader 驱动的三角形、ESSL 子集和 CPU 解释器；不是 WebGL 合规实现 |
 | `crates/glgpu-canvas2d` | RGBA8 校验与 Canvas 2D 呈现边界 |
 | `crates/glgpu-web` | Rust/Wasm 调试页与交互 |
 | `xtask` | ST/MT 构建和本地隔离服务器 |
@@ -117,7 +117,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 WebGL 的产品实现继续延后到 P7a+。当前主线不实现 ESSL parser、WebGL 状态机或 WebGL façade。
 
-另有一条并行学习轨道，见 [WebGL2 学习轨道](docs/webgl2-learning-track.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl2-learning-track.md)。它在 `glgpu-webgl` 里从零实现 WebGL2 风格栈，不依赖浏览器 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 WebGPU 轨道的 crate。当前切片是 clear、一个屏幕空间三角形，以及 ESSL 子集到 CPU 解释器的路径。标识保持 `NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
+另有一条并行学习轨道，见 [WebGL2 学习轨道](docs/webgl2-learning-track.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl2-learning-track.md)。它在 `glgpu-webgl` 里从零实现 WebGL2 风格栈，不依赖浏览器 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 WebGPU 轨道的 crate。当前切片是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
 
 ## 许可证状态
 

@@ -1,0 +1,29 @@
+#version 300 es
+uniform float u_scale;
+in float a_x;
+in float a_y;
+in float a_z;
+in float a_w;
+in float a_r;
+in float a_g;
+in float a_b;
+out float v_clip_x;
+out float v_clip_y;
+out float v_clip_z;
+out float v_clip_w;
+out float v_color_r;
+out float v_color_g;
+out float v_color_b;
+void main() {
+  float x = a_x * u_scale;
+  float y = a_y * u_scale;
+  float z = a_z;
+  float w = a_w;
+  v_clip_x = x;
+  v_clip_y = y;
+  v_clip_z = z;
+  v_clip_w = w;
+  v_color_r = a_r;
+  v_color_g = a_g;
+  v_color_b = a_b;
+}

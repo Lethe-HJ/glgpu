@@ -2,6 +2,10 @@
 //!
 //! This buffer is not a WebGL drawing buffer. Nothing here calls a browser
 //! GPU API, and the type does not depend on the WebGPU-track crates.
+//!
+//! Row 0 is the top image row. That storage order is transitional so a
+//! P0-parity picture matches the WebGPU demo. WebGL window y is bottom-left
+//! and is converted before pixels are written.
 
 use std::error::Error;
 use std::fmt;
@@ -23,6 +27,10 @@ impl Rgba8 {
     pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
+}
+
+pub(crate) fn quantize_unorm(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 /// Failure while creating the learning framebuffer.
@@ -97,6 +105,7 @@ impl LearningContext {
         self.pixels.fill(color);
     }
 
+    /// Storage coordinate. `y == 0` is the top image row, not the WebGL window origin.
     pub fn pixel(&self, x: u32, y: u32) -> Option<Rgba8> {
         if x >= self.width || y >= self.height {
             return None;

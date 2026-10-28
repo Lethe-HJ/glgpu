@@ -14,22 +14,29 @@
 
 #![forbid(unsafe_code)]
 
+mod clip;
 mod essl;
 mod framebuffer;
 mod raster;
 mod vm;
 
+pub use clip::{
+    ClipError, ClipOutcome, ClipPosition, ClipVertex, WindowPoint, WindowVertex,
+    clip_point_to_window, clip_triangle, storage_y_from_window_y,
+};
 pub use essl::{
     Expr, FrontendError, Function, InterfaceSymbol, SourceSpan, Statement, TranslationUnit,
     parse_essl_subset,
 };
 pub use framebuffer::{ContextError, LearningContext, Rgba8};
 pub use raster::{
-    P0_MILESTONE_CLEAR, RasterError, ScreenTriangle, ScreenVertex, p0_milestone_triangle,
+    P0_MILESTONE_CLEAR, RasterError, ScreenTriangle, ScreenVertex, ShaderDrawError,
+    ShaderTriangleDraw, p0_milestone_clip_vertices, p0_milestone_triangle,
 };
 pub use vm::{
-    BytecodeFunction, BytecodeModule, CompileError, DebugStep, DebugSymbol, ExecTrace, Instruction,
-    LocalSnapshot, LowerError, Op, SymbolKind, VmError, compile_and_execute, execute, lower,
+    BytecodeFunction, BytecodeModule, CompileError, DebugStep, DebugSymbol, Dest, ExecTrace,
+    Instruction, InterfaceSnapshot, LocalSnapshot, LowerError, Op, Operand, SymbolKind, VmError,
+    compile_and_execute, execute, execute_bound, lower,
 };
 
 use std::error::Error;
@@ -189,16 +196,16 @@ impl WebGl2LearningTrack {
             }
             TrackCapability::Rgba8Clear => "RGBA8 clear of the learning framebuffer",
             TrackCapability::ScreenSpaceTriangle => {
-                "one pre-transformed top-left triangle; not drawArrays or clip space"
+                "WebGL clip volume -w..w, bottom-left window, transitional top-left storage; shader outputs can drive one triangle; not drawArrays"
             }
             TrackCapability::Essl300Frontend => {
-                "subset lexer/parser for #version 300 es; glslang is the external oracle and is not called"
+                "subset lexer/parser for #version 300 es, scalar uniforms, ins, outs, and one multiplication; glslang is not called"
             }
             TrackCapability::BytecodeIr => {
-                "self-authored bytecode with statement spans; not a full shader ISA"
+                "self-authored bytecode with statement spans, including uniform, input, output, and mul ops"
             }
             TrackCapability::CpuInterpreter => {
-                "CPU interpreter for load_const and move, with a local step trace; no JIT"
+                "CPU interpreter for load_const, move, mul, and uniform/input/output traffic, with spans and local snapshots; no JIT"
             }
             TrackCapability::MutableStateMachine => "the WebGL state machine is not started",
             TrackCapability::DrawCall => "drawArrays and drawElements are not implemented",
@@ -207,7 +214,7 @@ impl WebGl2LearningTrack {
                 "CPU framebuffer present to Canvas 2D is not wired on this track"
             }
             TrackCapability::SingleStepDebugger => {
-                "spans and local snapshots exist, but there is no debugger UI or pause control"
+                "spans, local snapshots, and interface snapshots exist, but there is no debugger UI or pause control"
             }
             TrackCapability::JavaScriptFacade => {
                 "no JavaScript WebGL facade; these objects are not browser WebGL objects"
@@ -303,5 +310,25 @@ mod tests {
         let context = track.create_context(2, 2).expect("cpu context");
         assert!(context.banner().contains("NOT WEBGL CONFORMANT"));
         assert_eq!(track.create_context(0, 4), Err(ContextError::EmptyExtent));
+        assert!(
+            track
+                .detail(TrackCapability::ScreenSpaceTriangle)
+                .contains("-w..w")
+        );
+        assert!(
+            track
+                .detail(TrackCapability::ScreenSpaceTriangle)
+                .contains("bottom-left")
+        );
+        assert!(
+            track
+                .detail(TrackCapability::DrawCall)
+                .contains("not implemented")
+        );
+        assert!(
+            track
+                .detail(TrackCapability::CpuInterpreter)
+                .contains("no JIT")
+        );
     }
 }

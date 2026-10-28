@@ -61,7 +61,7 @@
 | Compute execution | 未实现 | 范围仍需冻结 |
 | Standard `navigator.gpu` façade | 未实现 | 必须等待 capability/CTS gate |
 | WebGL/ESSL 产品实现 | 延后 | P7a+；ADR 0001 仍然有效 |
-| WebGL2 学习轨道 | 学习切片 | 独立 CPU 栈：clear、屏幕空间三角形、ESSL 子集、bytecode 和解释器。禁止浏览器 WebGL/WebGPU。见 ADR 0003 |
+| WebGL2 学习轨道 | 学习切片 | 独立 CPU 栈：clear、WebGL clip/左下窗口、shader 三角形、ESSL 子集、bytecode 和解释器。禁止浏览器 WebGL/WebGPU。见 ADR 0003 |
 
 ## 信息优先级
 

@@ -18,7 +18,7 @@ GLGPU 要在 CPU 上把图形 API 从 0 做到 1，用来学习规范，而不�
 
 宿主 GPU 即使以后出现，也只能作为测试 oracle。标识字符串保持 `CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT`。
 
-早期画面目标与 WebGPU P0 相同：清屏加一个彩色三角形。光照旋转立方体晚于这个切片。当前三角形的顶点已经在 framebuffer 像素坐标里，原点在左上，这样可以和 P0 demo 的三个 NDC 顶点对齐。WebGL 自己的窗口原点是左下，clip Z 是 `-w..w`，这两项还没有做，所以 `drawArrays` 仍然是 `NotStarted`。
+早期画面目标与 WebGPU P0 相同：清屏加一个彩色三角形。光照旋转立方体晚于这个切片。三角形可以由 CPU 解释器的顶点输出驱动。Clip 体积是 WebGL 的 `-w <= x, y, z <= w`，窗口 y 向上、原点在左下。Framebuffer 第 0 行仍是图像上方，这样 P0 画面不用在呈现时再翻转；换算是 `storage_y = height - window_y`。这是过渡存储，不是 WebGL 窗口原点。`drawArrays` 仍然是 `NotStarted`。
 
 ## 规范基线
 
@@ -43,16 +43,21 @@ ESSL 源码 → AST → 自有 bytecode IR → CPU 解释器
 
 ## 现在已经落地的切片
 
-`WebGl2LearningTrack::create_context` 得到一块 CPU RGBA8 framebuffer。`clear` 覆盖全部像素。`draw_screen_space_triangle` 用采样点中心的重心坐标画一个三角形。`p0_milestone_triangle` 使用和 WebGPU P0 demo 相同的三个 NDC 位置与线性颜色，再映射到本 crate 的左上原点。像素覆盖规则是本 crate 自己的，不保证与 `glgpu-raster` 逐像素相同。
+`WebGl2LearningTrack::create_context` 得到一块 CPU RGBA8 framebuffer。`clear` 覆盖全部像素。`draw_screen_space_triangle` 接收已经落在存储坐标里的三角形，y 向下，用采样点中心的重心坐标覆盖。`draw_clip_space_triangle` 先按 WebGL 体积裁剪，再做透视除法和左下窗口，然后写入这块 framebuffer。`draw_shader_triangle` 对三个顶点各执行一次解释器，读取 `v_clip_*` 和 `v_color_*`。`p0_milestone_triangle` 与这条 shader 路径使用同一套投影，画面朝向与 WebGPU P0 demo 对齐。像素覆盖规则是本 crate 自己的，不保证与 `glgpu-raster` 逐像素相同。没有深度缓冲。
 
-ESSL 子集可以解析 [`examples/webgl2-triangle/float_local.essl`](../examples/webgl2-triangle/float_local.essl)：
+ESSL 子集可以解析两个夹具：
+
+- [`examples/webgl2-triangle/float_local.essl`](../examples/webgl2-triangle/float_local.essl)：`load_const` 和 `move`。它不产生三角形。
+- [`examples/webgl2-triangle/p0_vertex.essl`](../examples/webgl2-triangle/p0_vertex.essl)：一个 uniform 标量乘法，加上 `in` / `out` float，写出 clip 位置和颜色。
+
+子集目前是：
 
 - `#version 300 es`
 - `uniform` / `in` / `out` 的 `float`
 - `void` 函数
-- `float` 局部变量和赋值
+- `float` 局部变量、赋值，以及一次 `*`
 
-这些接口变量会进入 bytecode 模块，供以后的调试器看到。当前解释器不能读、也不能写它们。解释器只执行 `load_const` 和 `move`。这段 shader **不会**驱动三角形；三角形仍由调用方给出屏幕坐标。
+没有 `vec4`，也没有 `gl_Position`。接口变量会进入 bytecode。解释器可以读 uniform 和 `in`，可以写 `out`。每条指令带源码 span；每一步记录局部变量，以及 uniform、input、output 的值。单步调试器以后读这些记录；现在没有暂停控制，也没有调试 UI。`out` 不能读。未绑定的 uniform 在执行时报错，而不是变成未定义值。
 
 支持矩阵见 [`webgl2-learning.toml`](support-matrix/webgl2-learning.toml)。`require` 只对 `Supported` 成功。Partial 行有对应方法，但不是 WebGL 入口。
 
@@ -61,14 +66,16 @@ ESSL 子集可以解析 [`examples/webgl2-triangle/float_local.essl`](../example
 ```text
 crates/glgpu-webgl/                         # 独立栈，零外部依赖，不依赖 WebGPU 轨道 crate
   src/lib.rs                                # 能力矩阵、NOT WEBGL CONFORMANT
-  src/framebuffer.rs                        # RGBA8 clear
-  src/raster.rs                             # 屏幕空间三角形
+  src/framebuffer.rs                        # RGBA8 clear；第 0 行是图像上方
+  src/clip.rs                               # WebGL clip 体积、左下窗口、过渡存储的 y 换算
+  src/raster.rs                             # 存储坐标三角形，以及 clip / shader 绘制
   src/essl.rs                               # 子集词法、语法、AST、源码 span
   src/vm.rs                                 # bytecode、lowering、CPU 解释器、步骤记录
 docs/adr/0003-parallel-webgl2-learning-track.md
 docs/webgl2-learning-track.zh-CN.md         # 本文
 docs/support-matrix/webgl2-learning.toml
-examples/webgl2-triangle/float_local.essl   # 解释器夹具，不是光栅器的输入
+examples/webgl2-triangle/p0_vertex.essl     # 驱动三角形的顶点着色器
+examples/webgl2-triangle/float_local.essl   # 只含 load_const / move 的解释器夹具
 ```
 
 `glgpu-web` 的调试页继续只加载 WebGPU P0。不要在那一页上增加 WebGL2 按钮。
@@ -76,11 +83,10 @@ examples/webgl2-triangle/float_local.essl   # 解释器夹具，不是光栅器�
 ## 下一步
 
 1. 在 native CI 里调用 glslang `16.6.0`，只做 accept/reject 对照，不把它编进 Wasm。
-2. 在本 crate 实现 WebGL 左下原点和 clip Z `-w..w`。完成前，屏幕空间三角形保持 partial。
-3. 让解释器产出的顶点驱动三角形，替换手工屏幕坐标。立方体和光照放在这之后。
-4. 扩展 bytecode，使 uniform 和 varying 也能出现在单步记录里，然后再做调试器 UI。
-5. mutable state、`drawArrays`、`readPixels` 和 Canvas 2D present。
-6. JavaScript adapter 放在最后，并且不是浏览器原生 `WebGL2RenderingContext`。
+2. 补 `vec4` / `gl_Position`、透视正确的 varying，以及深度测试。立方体和光照放在这之后。
+3. 调试器 UI。span、逐步局部变量和接口快照已经有了。
+4. mutable state、`drawArrays`、`readPixels` 和 Canvas 2D present。呈现时把存储第 0 行放在图像上方，不要再翻一次 y。
+5. JavaScript adapter 放在最后，并且不是浏览器原生 `WebGL2RenderingContext`。
 
 WebGPU 主线的下一程不变：项目自有 shader IR 和 WGSL 的 CPU 执行。两条轨道不共享 crate。
 

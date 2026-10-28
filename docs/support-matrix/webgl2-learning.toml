@@ -39,19 +39,22 @@ api = [
 [partial]
 api = [
     "CPU learning context that owns an RGBA8 framebuffer and is not a WebGL2RenderingContext",
-    "one screen-space triangle with vertex colors, sample-center barycentrics, and a top-left origin",
-    "ESSL 3.00 subset lexer, parser, and AST: #version 300 es, uniform/in/out float, void functions, float locals and assignments",
-    "self-authored bytecode IR with a source span on each instruction",
-    "CPU interpreter for load_const and move, recording a local snapshot after each step",
+    "WebGL clip volume -w <= x, y, z <= w, including a triangle that crosses one clip plane",
+    "bottom-left window coordinates after the perspective divide",
+    "one triangle whose clip position and color come from CPU interpreter outputs",
+    "transitional top-left framebuffer storage so the P0 picture keeps the WebGPU demo orientation: storage_y = height - window_y",
+    "screen-space triangle with vertex colors and sample-center barycentrics, for vertices already in storage pixels",
+    "ESSL 3.00 subset lexer, parser, and AST: #version 300 es, uniform/in/out float, void functions, float locals, assignments, and one multiplication",
+    "self-authored bytecode IR with a source span on each instruction, including uniform, input, output, and mul ops",
+    "CPU interpreter for load_const, move, mul, and uniform/input/output traffic, recording locals and interface values after each step",
 ]
 
 [not_started]
 api = [
     "drawArrays and drawElements",
     "mutable WebGL state machine",
-    "clip-space vertex transform",
-    "bottom-left WebGL window origin",
     "depth test",
+    "vec4, gl_Position, and perspective-correct fragment varyings",
     "ESSL type checking beyond the subset",
     "glslang oracle wired into CI",
     "machine-code JIT",
@@ -65,14 +68,17 @@ api = [
 
 [intentionally_different]
 api = [
-    "the triangle is pre-transformed into framebuffer pixels with a top-left origin so the picture can match the WebGPU P0 demo milestone; it is not WebGL clip space",
+    "framebuffer row 0 is the top image row so the P0 picture matches the WebGPU demo; WebGL window y is bottom-left and storage_y = height - window_y. This storage order is transitional until present exists",
     "coverage is this crate's sample-center barycentric test, not a bit-identical port of the WebGPU rasterizer",
-    "interface variables are retained for a future debugger but cannot be read or written in the subset",
-    "unassigned locals fail at lowering instead of becoming WebGL undefined values",
+    "clip Z is -w..w, so a triangle with negative clip Z still rasterizes here. There is no depth buffer",
+    "the shader subset is scalar float only. Vertex outputs use v_clip_* and v_color_* because there is no vec4 or gl_Position",
+    "fragment color is barycentric in storage pixels. Attributes created by clipping are lerped in clip space",
+    "unassigned locals and unbound uniforms fail instead of becoming WebGL undefined values",
+    "reading a shader output is rejected in this subset",
 ]
 
 [notes]
-scope = "Learning slice inside glgpu-webgl. Partial rows are not WebGL entry points."
+scope = "Learning slice inside glgpu-webgl. Partial rows are not WebGL entry points. drawArrays is not started."
 essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00. glslang 16.6.0 is the accept/reject reference and is not invoked yet."
-coordinates = "WebGL clip Z is -w..w and the window origin is bottom-left. Those conventions are not implemented."
-debugger = "Instruction spans and per-step local snapshots are the debugger hook. There is no pause control or UI."
+coordinates = "Window space is bottom-left and clip Z is -w..w. Stored row 0 is still the top image row."
+debugger = "Instruction spans, per-step local snapshots, and per-step uniform/input/output values are the debugger hook. There is no pause control or UI."
