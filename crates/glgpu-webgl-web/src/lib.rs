@@ -6,11 +6,11 @@
 //! does not link the webgpu-mock crates.
 //!
 //! Current state: single-threaded Wasm on the main thread. `putImageData`
-//! copies the frame onto the page canvas. The target draw surface in the Worker
-//! is an OffscreenCanvas, then Canvas 2D presents that to the visible canvas.
-//! Whether a separate CPU framebuffer stays beside it is not decided. The main
-//! thread would reach that Worker + Wasm backend through SharedArrayBuffer
-//! and/or a zero-copy transfer, not a copied `postMessage`. This page does not
+//! copies the frame onto the page canvas. Scheme C keeps the CPU framebuffer
+//! authoritative and blits it into a Worker OffscreenCanvas for present and
+//! zero-copy export only. Page Canvas 2D only presents. The main thread would
+//! reach that Worker + Wasm backend through SharedArrayBuffer or a zero-copy
+//! transfer, not a copied `postMessage` of pixel payloads. This page does not
 //! start that worker.
 //!
 //! The permanent banner stays `webgl-mock — NOT WEBGL CONFORMANT`.

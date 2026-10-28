@@ -3,7 +3,7 @@
 > 文档版本：P0 / `0.1.0`  
 > 核对日期：2026-08-22  
 > 适用源码：当前 workspace 中的 `glgpu-core`、`glgpu-trace`、`glgpu-raster`、`glgpu-shader`、`glgpu-webgpu`、`glgpu-canvas2d`  
-> `glgpu-webgl` 不属于本文。它是独立的 webgl-mock，有自己的 clear、WebGL clip/窗口、shader 三角形 demo、ESSL 子集和解释器。`glgpu-webgl-web` 只是它的 demo 页壳，当前在主线程跑单线程 Wasm，并用 Canvas 2D `putImageData` 直接交到页面 canvas。目标绘制面是 Worker 里的 OffscreenCanvas（离屏 canvas），再 present 到可见 canvas。是否另留 CPU framebuffer/cache 尚未决定。两者都不是原生 WebGL façade，也不链接 `WebGLRenderingContext` 或 `navigator.gpu`。见 [webgl-mock](webgl-mock.zh-CN.md)。
+> `glgpu-webgl` 不属于本文。它是独立的 webgl-mock，有自己的 clear、WebGL clip/窗口、shader 三角形 demo、ESSL 子集和解释器。`glgpu-webgl-web` 只是它的 demo 页壳，当前在主线程跑单线程 Wasm，并用 Canvas 2D `putImageData` 直接交到页面 canvas。方案 C 已决定：CPU framebuffer 是权威像素存储，写入后再 blit 到 Worker OffscreenCanvas，后者只做呈现和零拷贝导出。这次不实现这条管线。两者都不是原生 WebGL façade，也不链接 `WebGLRenderingContext` 或 `navigator.gpu`。见 [webgl-mock](webgl-mock.zh-CN.md)。
 
 本文是当前 P0 实现的逐项 API 参考和可观察行为契约。长期设计、后续阶段和方案取舍见[架构规划](architecture-plan.zh-CN.md)，机器可读的能力声明见 [P0 支持矩阵](support-matrix/webgpu-p0.toml)，构建模式见 [Wasm 构建 ADR](adr/0002-wasm-build-profiles.md)。当规划文档与当前源码行为不一致时，本文只描述已经落地的 P0；最终仍以锁定版本的源码和测试为准。
 

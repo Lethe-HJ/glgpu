@@ -388,7 +388,7 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
 
-并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。目标绘制面是 Worker 里的 OffscreenCanvas（离屏 canvas），再经 Canvas 2D present 到可见 canvas；是否另留 CPU framebuffer/cache 尚未决定。主线程与 Worker + Wasm 后端用 SharedArrayBuffer 或零拷贝转移通信，不用普通 postMessage 拷贝。它还没有本节的状态机，也不把 P7a 提前成产品交付。
+并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。方案 C 已决定：CPU framebuffer 是权威像素存储，写入后再 blit 到 Worker OffscreenCanvas，后者只做呈现和零拷贝导出。页面 Canvas 2D 只呈现。主线程与 Worker 只用 SharedArrayBuffer 或零拷贝转移，像素载荷不用拷贝式 postMessage。这次不实现这条管线。它还没有本节的状态机，也不把 P7a 提前成产品交付。
 
 ### 9.1 状态与对象
 
@@ -1152,4 +1152,4 @@ compute/barrier 范围）和量化 Q6（参考机器、分辨率、场景与帧�
 建议下一迭代先实现项目自有 shader IR/字节码与 WGSL lowering，让 demo 顶点/片元 shader 真正在 CPU
 执行；随后加入 buffer、bind group、render pipeline、texture/sampler 和 capture schema。owner-worker 与异步
 queue spike 应作为独立 gate，不能把当前同步 `ImmediateMainOwnerQueue` 宣称成标准 WebGPU queue。WebGL
-的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm，并把像素直接交给页面 canvas。目标绘制面是 Worker 里的 OffscreenCanvas（离屏 canvas），再经 Canvas 2D present。是否另留 CPU framebuffer/cache 尚未决定。
+的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm，并把像素直接交给页面 canvas。方案 C 已决定：CPU framebuffer 是权威来源，写入后再 blit 到 Worker OffscreenCanvas，再经 Canvas 2D present。这次不实现这条管线。

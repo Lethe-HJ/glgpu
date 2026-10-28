@@ -4,16 +4,16 @@
 //! `glgpu-webgpu`, `glgpu-shader`, `glgpu-core`, or the other webgpu-mock
 //! crates, and it does not call browser WebGL or WebGPU.
 //!
-//! Target split: the pipeline draw target in the Worker is an OffscreenCanvas,
-//! not the page canvas. Whether a separate CPU framebuffer stays beside that
-//! OffscreenCanvas is not decided. Presentation then reaches the visible canvas
-//! through the Canvas 2D present path. The main-thread Web API façade reaches
-//! that Worker + Wasm backend through SharedArrayBuffer and/or a zero-copy
-//! transfer (a transferable ArrayBuffer or an OffscreenCanvas transfer), not a
-//! copied `postMessage`. This crate is that backend's CPU implementation. The
-//! demo page still runs it as single-threaded Wasm on the main thread and
-//! copies pixels straight to the page canvas; there is no Worker OffscreenCanvas
-//! yet.
+//! Target split, scheme C: the Wasm CPU framebuffer is the authoritative pixel
+//! store. After it is written, blit those pixels into a Worker OffscreenCanvas,
+//! which is only the present and zero-copy export surface. Page Canvas 2D only
+//! presents; the pipeline does not draw to the visible page canvas. The
+//! main-thread Web API façade reaches that Worker + Wasm backend through
+//! SharedArrayBuffer or a zero-copy transfer (a transferable ArrayBuffer,
+//! ImageBitmap, or an OffscreenCanvas transfer), not a copied `postMessage` of
+//! pixel payloads. This crate is that backend's CPU implementation. The demo
+//! page still runs it as single-threaded Wasm on the main thread and copies
+//! pixels straight to the page canvas; there is no Worker OffscreenCanvas yet.
 //!
 //! The compile path is ESSL source, then an AST, then self-authored bytecode,
 //! then a CPU interpreter. There is no machine-code JIT. Instruction spans and
@@ -60,7 +60,7 @@ pub const CONFORMANCE_BANNER: &str = "webgl-mock — NOT WEBGL CONFORMANT";
 pub const WEBGL_MOCK: &str = "webgl-mock is a WebGL2-style visualization running on the CPU. It is not native WebGL and not native WebGPU.";
 
 /// Target thread split versus the demo page today.
-pub const THREADING: &str = "Target: the pipeline draw target in the Worker is an OffscreenCanvas, not the page canvas. Whether to keep a separate CPU framebuffer, draw only to that OffscreenCanvas, or both, is not decided. Presentation then reaches the visible canvas through the Canvas 2D present path. The main-thread Web API facade reaches the Worker + Wasm backend through SharedArrayBuffer and/or zero-copy transfer (transferable ArrayBuffer or OffscreenCanvas transfer), not a copied postMessage. Current demo: single-threaded Wasm on the main thread, then Canvas 2D putImageData onto the page canvas. No Worker OffscreenCanvas yet.";
+pub const THREADING: &str = "Scheme C, both: the Wasm CPU pixel framebuffer is the authoritative store for raster results, framebuffer hash, unit tests, and pixel debugging. After that CPU cache is written, blit those pixels into a Worker OffscreenCanvas. That OffscreenCanvas is only the present and zero-copy export surface, not the authoritative pixel store, and tests do not read it back as the primary hash path. The pipeline does not draw to the visible page canvas; page Canvas 2D only presents. Main thread to Worker messaging is SharedArrayBuffer or zero-copy transfer only (transferable ArrayBuffer, ImageBitmap, or OffscreenCanvas transfer), not a copied postMessage of pixel payloads. Current demo: single-threaded Wasm on the main thread, then Canvas 2D putImageData onto the page canvas. No Worker OffscreenCanvas yet.";
 
 /// Lowering and execution shape. JIT is intentionally absent.
 pub const COMPILE_PATH: &str =
@@ -225,13 +225,13 @@ impl WebGlMock {
             Capability::DrawCall => "drawArrays and drawElements are not implemented",
             Capability::ReadPixels => "synchronous readPixels is not implemented",
             Capability::ExplicitPresent => {
-                "DemoContext has no present method. The current demo copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread. The target draw surface in the Worker is an OffscreenCanvas, then Canvas 2D presents to the visible canvas. Whether a separate CPU framebuffer stays is not decided. This copy is not native WebGL present"
+                "DemoContext has no present method. The current demo copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread. Scheme C: the CPU framebuffer stays authoritative, then a blit fills a Worker OffscreenCanvas for present and zero-copy export only. This copy is not native WebGL present"
             }
             Capability::SingleStepDebugger => {
                 "spans, local snapshots, and interface snapshots exist, but there is no single-step pause UI. The debug page runs the whole frame; it does not step"
             }
             Capability::JavaScriptFacade => {
-                "no JavaScript WebGL facade. The target main thread would expose that facade and reach a Worker + Wasm backend through SharedArrayBuffer and/or zero-copy transfer, not a copied postMessage. Today the demo shell runs webgl-mock on the main thread. These objects are not native WebGL objects"
+                "no JavaScript WebGL facade. The target main thread would expose that facade and reach a Worker + Wasm backend through SharedArrayBuffer or zero-copy transfer only, not a copied postMessage of pixel payloads. Today the demo shell runs webgl-mock on the main thread. These objects are not native WebGL objects"
             }
             Capability::HostWebGlOrWebGpu => {
                 "native WebGLRenderingContext and navigator.gpu are forbidden backends"
@@ -275,16 +275,17 @@ mod tests {
         assert!(WEBGL_MOCK.contains("not native WebGL"));
         assert!(WEBGL_MOCK.contains("not native WebGPU"));
         assert!(!WEBGL_MOCK.to_ascii_lowercase().contains("learning"));
-        assert!(THREADING.contains("Worker is an OffscreenCanvas"));
-        assert!(THREADING.contains("not the page canvas"));
-        assert!(THREADING.contains("not decided"));
-        assert!(THREADING.contains("Worker + Wasm"));
+        assert!(THREADING.contains("Scheme C"));
+        assert!(THREADING.contains("authoritative"));
+        assert!(THREADING.contains("Worker OffscreenCanvas"));
+        assert!(THREADING.contains("not the authoritative pixel store"));
+        assert!(THREADING.contains("page Canvas 2D only presents"));
         assert!(THREADING.contains("main thread"));
-        assert!(THREADING.contains("Canvas 2D"));
         assert!(THREADING.contains("SharedArrayBuffer"));
-        assert!(THREADING.contains("zero-copy transfer"));
+        assert!(THREADING.contains("ImageBitmap"));
         assert!(THREADING.contains("not a copied postMessage"));
         assert!(THREADING.contains("No Worker OffscreenCanvas yet"));
+        assert!(!THREADING.to_ascii_lowercase().contains("not decided"));
         assert!(!THREADING.to_ascii_lowercase().contains("offscreen buffer"));
         assert!(COMPILE_PATH.contains("CPU interpreter"));
         assert!(COMPILE_PATH.contains("no machine-code JIT"));

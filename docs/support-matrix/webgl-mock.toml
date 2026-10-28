@@ -7,9 +7,9 @@ implementation = "webgl-mock"
 goal = "webgl-mock: WebGL2-style visualization running on the CPU; not native WebGL"
 backend = "cpu-from-scratch"
 separate_from_webgpu_crates = true
-presentation = "current demo page copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread; DemoContext has no present method. Target draw surface: Worker OffscreenCanvas, then Canvas 2D present to the visible canvas. A separate CPU framebuffer is not decided"
+presentation = "current demo page copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread; DemoContext has no present method. Scheme C: CPU framebuffer is authoritative; after it is written, blit into a Worker OffscreenCanvas used only for present and zero-copy export"
 api_surface = "webgl-mock inside glgpu-webgl; the triangle page is a demo in crates/glgpu-webgl-web"
-threading_target = "pipeline draw target in the Worker is an OffscreenCanvas, not the page canvas; whether a separate CPU framebuffer stays is not decided; Canvas 2D then presents to the visible canvas; main-thread facade reaches the Worker + Wasm backend through SharedArrayBuffer and/or zero-copy transfer (transferable ArrayBuffer or OffscreenCanvas transfer), not a copied postMessage"
+threading_target = "scheme C, both: Wasm CPU framebuffer is authoritative for raster results, hash, tests, and pixel debugging; blit into a Worker OffscreenCanvas used only as the present and zero-copy export surface; page Canvas 2D only presents; main thread to Worker uses SharedArrayBuffer or zero-copy transfer only (transferable ArrayBuffer, ImageBitmap, or OffscreenCanvas transfer), not a copied postMessage of pixel payloads"
 threading_current = "single-threaded Wasm on the main thread; putImageData copies onto the page canvas; no Worker OffscreenCanvas yet"
 product_phase = "P7a+ remains the production gate; this file does not move it"
 banner = "webgl-mock — NOT WEBGL CONFORMANT"
@@ -81,7 +81,7 @@ api = [
 
 [notes]
 scope = "webgl-mock inside glgpu-webgl. The triangle page is a demo. Partial rows are not native WebGL entry points. drawArrays is not started."
-debug_page = "web/webgl.html reloads a separate Wasm package on the main thread and putImageData copies onto the page canvas. It is not native WebGLRenderingContext. The target draw surface is a Worker OffscreenCanvas. This file does not move explicit present, drawArrays, or the JavaScript facade out of not_started."
+debug_page = "web/webgl.html reloads a separate Wasm package on the main thread and putImageData copies onto the page canvas. It is not native WebGLRenderingContext. Scheme C is decided but this page does not implement the Worker OffscreenCanvas blit. This file does not move explicit present, drawArrays, or the JavaScript facade out of not_started."
 essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00. glslang 16.6.0 is the accept/reject reference and is not invoked yet."
 coordinates = "Window space is bottom-left and clip Z is -w..w. Stored row 0 is still the top image row."
 debugger = "Instruction spans, per-step local snapshots, and per-step uniform/input/output values are the debugger hook. There is no pause control or UI."
