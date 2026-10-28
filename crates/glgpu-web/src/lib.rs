@@ -391,15 +391,14 @@ mod app {
         TrianglePreviewInputs, highlight_overlay_html, line_numbers_html, triangle_preview_inputs,
         utf8_span_to_utf16_range,
     };
-    use glgpu_canvas2d::present_rgba8;
     use glgpu_core::{Extent2d, PixelCoord, Rgba8, ScreenVertex, Triangle};
     use glgpu_webgpu::{CpuDevice, CpuGpuSubset, DeviceDescriptor};
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::prelude::*;
     use web_sys::{
-        CanvasRenderingContext2d, Document, Element, HtmlButtonElement, HtmlCanvasElement,
-        HtmlElement, HtmlTextAreaElement, KeyboardEvent, MouseEvent, Storage,
+        Document, Element, HtmlButtonElement, HtmlCanvasElement, HtmlElement, HtmlTextAreaElement,
+        KeyboardEvent, MouseEvent, Storage,
     };
 
     const WIDTH: u32 = 720;
@@ -410,8 +409,13 @@ mod app {
 
     struct DemoState {
         device: CpuDevice,
-        context: CanvasRenderingContext2d,
-        canvas: HtmlCanvasElement,
+        compare_slot: HtmlElement,
+        compare_status: HtmlElement,
+        viewport_badge: HtmlElement,
+        compile_button: HtmlButtonElement,
+        run_button: HtmlButtonElement,
+        reference_button: HtmlButtonElement,
+        native_button: HtmlButtonElement,
         metrics: HtmlElement,
         pixel_history: HtmlElement,
         editor: HtmlTextAreaElement,
@@ -432,6 +436,91 @@ mod app {
     }
 
     impl DemoState {
+        fn call_window1(&self, name: &str, arg: &JsValue) -> Result<JsValue, JsValue> {
+            let window =
+                web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;
+            let function = js_sys::Reflect::get(&window, &JsValue::from_str(name))?;
+            let function: js_sys::Function = function.dyn_into()?;
+            function.call1(&JsValue::UNDEFINED, arg)
+        }
+
+        fn mark_pending(&self, state: &str) -> Result<(), JsValue> {
+            self.compare_slot
+                .set_attribute("data-compare-state", state)?;
+            self.compare_slot.remove_attribute("data-compare-ready")?;
+            self.compare_slot.remove_attribute("data-compare-error")?;
+            Ok(())
+        }
+
+        fn set_pressed(&self, native: bool) -> Result<(), JsValue> {
+            self.reference_button
+                .set_attribute("aria-pressed", if native { "false" } else { "true" })?;
+            self.native_button
+                .set_attribute("aria-pressed", if native { "true" } else { "false" })?;
+            self.editor.set_read_only(native);
+            self.compile_button.set_disabled(native);
+            self.run_button.set_disabled(native);
+            Ok(())
+        }
+
+        fn show_reference_compare(&self) -> Result<(), JsValue> {
+            self.set_pressed(false)?;
+            self.mark_pending("reference")?;
+            self.call_window1("glgpuPresentCompare", &JsValue::from_str("reference"))?;
+            self.compare_status
+                .set_text_content(Some("正在显示：固定对照场景 · 参考实现"));
+            self.viewport_badge
+                .set_text_content(Some("RGBA8 · 320×240"));
+            self.metrics
+                .set_text_content(Some("固定对照场景 · RGBA8 · 320×240"));
+            Ok(())
+        }
+
+        fn show_native_compare(&self) -> Result<(), JsValue> {
+            self.set_pressed(true)?;
+            self.mark_pending("native")?;
+            self.call_window1("glgpuPresentCompare", &JsValue::from_str("native"))?;
+            Ok(())
+        }
+
+        fn present_editor_pixels(&self, pixels: &[u8]) -> Result<(), JsValue> {
+            let window =
+                web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;
+            let function: js_sys::Function =
+                js_sys::Reflect::get(&window, &JsValue::from_str("glgpuPresentEditorFrame"))?
+                    .dyn_into()?;
+            let bytes = js_sys::Uint8Array::from(pixels);
+            function.call3(
+                &JsValue::UNDEFINED,
+                &JsValue::from(WIDTH),
+                &JsValue::from(HEIGHT),
+                &bytes,
+            )?;
+            self.compare_status
+                .set_text_content(Some("正在显示：编辑器预览 · 不参与原生对照"));
+            self.viewport_badge
+                .set_text_content(Some(&format!("RGBA8 · {WIDTH}×{HEIGHT}")));
+            self.set_pressed(false)?;
+            Ok(())
+        }
+
+        fn read_canvas_pixel(&self, x: u32, y: u32) -> Result<(u8, u8, u8, u8), JsValue> {
+            let window =
+                web_sys::window().ok_or_else(|| JsValue::from_str("window is unavailable"))?;
+            let function: js_sys::Function =
+                js_sys::Reflect::get(&window, &JsValue::from_str("glgpuReadCanvasPixel"))?
+                    .dyn_into()?;
+            let value =
+                function.call2(&JsValue::UNDEFINED, &JsValue::from(x), &JsValue::from(y))?;
+            let bytes = js_sys::Uint8Array::new(&value);
+            Ok((
+                bytes.get_index(0),
+                bytes.get_index(1),
+                bytes.get_index(2),
+                bytes.get_index(3),
+            ))
+        }
+
         fn render(&mut self, selected: PixelCoord) -> Result<(), JsValue> {
             let started = js_sys::Date::now();
             let vertices = self.preview_vertices();
@@ -456,7 +545,7 @@ mod app {
                 .submit(command_buffer)
                 .map_err(js_error)?;
             let pixels = self.device.queue().readback_rgba8().map_err(js_error)?;
-            present_rgba8(&self.context, WIDTH, HEIGHT, &pixels).map_err(js_error)?;
+            self.present_editor_pixels(&pixels)?;
 
             let elapsed_ms = js_sys::Date::now() - started;
             self.metrics.set_text_content(Some(&format!(
@@ -544,6 +633,9 @@ mod app {
         }
 
         fn compile_editor(&mut self, run_after_compile: bool) -> Result<bool, JsValue> {
+            if self.editor.read_only() {
+                return Ok(false);
+            }
             let source = self.editor.value();
             if source.len() > MAX_WGSL_BYTES {
                 self.show_limit_error(source.len());
@@ -897,22 +989,38 @@ mod app {
         let viewport_title = element(&document, "h2", "")?;
         viewport_title.set_text_content(Some("CPU Framebuffer"));
         let viewport_badge = element(&document, "span", "preview-badge")?;
+        viewport_badge.set_id("viewport-badge");
         viewport_badge.set_text_content(Some("RGBA8 · 720×480"));
         append(&viewport_header, &viewport_title)?;
         append(&viewport_header, &viewport_badge)?;
-        let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
-        canvas.set_width(WIDTH);
-        canvas.set_height(HEIGHT);
-        canvas.set_class_name("viewport");
-        canvas.set_attribute("aria-label", "GLGPU CPU-rendered output")?;
-        let context: CanvasRenderingContext2d = canvas
-            .get_context("2d")?
-            .ok_or_else(|| JsValue::from_str("Canvas 2D context is unavailable"))?
-            .dyn_into()?;
+        let compare_slot = element(&document, "div", "compare-slot")?;
+        compare_slot.set_id("compare-slot");
+        let compare_status = element(&document, "p", "compare-status")?;
+        compare_status.set_id("compare-status");
+        compare_status.set_text_content(Some("正在准备固定对照场景"));
+        let compare_note = element(&document, "p", "compare-note")?;
+        compare_note.set_id("compare-note");
+        compare_note.set_text_content(Some(
+            "原生对照只用于观看画面和本地像素比较。它不运行编辑器里的调试流程，也不改变 CpuGpuSubset — NOT WEBGPU CONFORMANT。",
+        ));
+        let toggle = element(&document, "div", "compare-toggle")?;
+        toggle.set_attribute("role", "group")?;
+        toggle.set_attribute("aria-label", "对照后端")?;
+        let reference_button = button(&document, "button button-secondary", "参考实现")?;
+        reference_button.set_attribute("type", "button")?;
+        reference_button.set_attribute("aria-pressed", "true")?;
+        let native_button = button(&document, "button button-secondary", "原生")?;
+        native_button.set_attribute("type", "button")?;
+        native_button.set_attribute("aria-pressed", "false")?;
+        append(&toggle, &reference_button)?;
+        append(&toggle, &native_button)?;
         let metrics = element(&document, "div", "metrics")?;
         metrics.set_text_content(Some("waiting for first submit"));
         append(&viewport_panel, &viewport_header)?;
-        append(&viewport_panel, &canvas)?;
+        append(&viewport_panel, &toggle)?;
+        append(&viewport_panel, &compare_note)?;
+        append(&viewport_panel, &compare_slot)?;
+        append(&viewport_panel, &compare_status)?;
         append(&viewport_panel, &metrics)?;
 
         let inspector = element(&document, "aside", "panel inspector")?;
@@ -945,8 +1053,13 @@ mod app {
         let preview = triangle_preview_inputs(DEMO_WGSL).map_err(js_error)?;
         let state = Rc::new(RefCell::new(DemoState {
             device,
-            context,
-            canvas: canvas.clone(),
+            compare_slot: compare_slot.clone(),
+            compare_status,
+            viewport_badge,
+            compile_button: compile_button.clone(),
+            run_button: run_button.clone(),
+            reference_button: reference_button.clone(),
+            native_button: native_button.clone(),
             metrics,
             pixel_history,
             editor: editor.clone(),
@@ -965,7 +1078,8 @@ mod app {
             parallel,
             wgsl_summary: "WGSL not compiled".to_owned(),
         }));
-        state.borrow_mut().compile_editor(true)?;
+        state.borrow_mut().compile_editor(false)?;
+        state.borrow_mut().show_reference_compare()?;
 
         let input_state = Rc::clone(&state);
         let input = Closure::<dyn FnMut()>::new(move || {
@@ -1010,6 +1124,26 @@ mod app {
         run_button.add_event_listener_with_callback("click", run_click.as_ref().unchecked_ref())?;
         run_click.forget();
 
+        let reference_state = Rc::clone(&state);
+        let reference_click = Closure::<dyn FnMut()>::new(move || {
+            if let Err(error) = reference_state.borrow().show_reference_compare() {
+                web_sys::console::error_1(&error);
+            }
+        });
+        reference_button
+            .add_event_listener_with_callback("click", reference_click.as_ref().unchecked_ref())?;
+        reference_click.forget();
+
+        let native_state = Rc::clone(&state);
+        let native_click = Closure::<dyn FnMut()>::new(move || {
+            if let Err(error) = native_state.borrow().show_native_compare() {
+                web_sys::console::error_1(&error);
+            }
+        });
+        native_button
+            .add_event_listener_with_callback("click", native_click.as_ref().unchecked_ref())?;
+        native_click.forget();
+
         let reset_code_state = Rc::clone(&state);
         let reset_code_click = Closure::<dyn FnMut()>::new(move || {
             let mut state = reset_code_state.borrow_mut();
@@ -1048,24 +1182,44 @@ mod app {
 
         let click_state = Rc::clone(&state);
         let click = Closure::<dyn FnMut(MouseEvent)>::new(move |event: MouseEvent| {
-            let (client_width, client_height) = {
-                let state = click_state.borrow();
-                (state.canvas.client_width(), state.canvas.client_height())
+            let Some(target) = event.target() else {
+                return;
             };
-            if client_width <= 0 || client_height <= 0 {
+            let Ok(canvas) = target.dyn_into::<HtmlCanvasElement>() else {
+                return;
+            };
+            let width = canvas.width();
+            let height = canvas.height();
+            if width == 0 || height == 0 {
                 return;
             }
-            let x = ((event.offset_x().max(0) as u64 * u64::from(WIDTH)) / client_width as u64)
-                .min(u64::from(WIDTH - 1)) as u32;
-            let y = ((event.offset_y().max(0) as u64 * u64::from(HEIGHT)) / client_height as u64)
-                .min(u64::from(HEIGHT - 1)) as u32;
+            let x = (event.offset_x().max(0) as u32).min(width - 1);
+            let y = (event.offset_y().max(0) as u32).min(height - 1);
             let mut state = click_state.borrow_mut();
-            if let Err(error) = state.render(PixelCoord::new(x, y)) {
-                state.show_runtime_error(&error);
-                web_sys::console::error_1(&error);
+            let mode = state
+                .compare_slot
+                .get_attribute("data-compare-state")
+                .unwrap_or_default();
+            if mode == "native" {
+                return;
+            }
+            if mode == "editor" {
+                if let Err(error) = state.render(PixelCoord::new(x, y)) {
+                    state.show_runtime_error(&error);
+                    web_sys::console::error_1(&error);
+                }
+                return;
+            }
+            match state.read_canvas_pixel(x, y) {
+                Ok((red, green, blue, alpha)) => {
+                    state.pixel_history.set_text_content(Some(&format!(
+                        "pixel ({x}, {y})\nrgba({red}, {green}, {blue}, {alpha})\n固定对照场景没有 primitive history"
+                    )));
+                }
+                Err(error) => web_sys::console::error_1(&error),
             }
         });
-        canvas.add_event_listener_with_callback("click", click.as_ref().unchecked_ref())?;
+        compare_slot.add_event_listener_with_callback("click", click.as_ref().unchecked_ref())?;
         click.forget();
 
         let reset_trace_state = Rc::clone(&state);
@@ -1179,6 +1333,10 @@ mod app {
                 .panel-heading h2 { margin: 0; }
                 .preview-badge { color: #7f8ba8; font: 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
                 .viewport { display: block; width: 100%; height: auto; border-radius: 8px; background: #0d121e; cursor: crosshair; image-rendering: pixelated; }
+                #compare-slot { width: 320px; height: 240px; }
+                #compare-slot[data-compare-state="editor"] { width: 720px; height: 480px; }
+                #compare-slot .viewport { width: 320px; height: 240px; max-width: none; }
+                #compare-slot[data-compare-state="editor"] .viewport { width: 720px; height: 480px; }
                 .metrics { padding: 11px 2px 0; color: #93a1c3; font: 12px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
                 .inspector { padding: 20px; }
                 h2 { margin: 0 0 8px; font-size: 18px; }
@@ -1211,6 +1369,17 @@ mod app {
             "#,
         ));
         append(root, &style)
+    }
+
+    fn button(
+        document: &Document,
+        class_name: &str,
+        label: &str,
+    ) -> Result<HtmlButtonElement, JsValue> {
+        let button: HtmlButtonElement = document.create_element("button")?.dyn_into()?;
+        button.set_class_name(class_name);
+        button.set_text_content(Some(label));
+        Ok(button)
     }
 
     fn element(document: &Document, tag: &str, class_name: &str) -> Result<HtmlElement, JsValue> {

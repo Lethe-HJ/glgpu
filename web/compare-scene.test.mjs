@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mountCanvasSource } from "./compare-present.js";
 import {
   COMPARE_CLEAR,
   COMPARE_ERROR_CHROME,
@@ -70,4 +71,14 @@ test("compare copy matches the spec sentences", () => {
     COMPARE_ERROR_WEBGL,
     "原生对照需要本机 Google Chrome 的 WebGL2。当前环境不能创建 WebGL2 上下文，命令失败。",
   );
+});
+
+test("present helper forces buffer css size and does not scale", () => {
+  assert.match(mountCanvasSource(), /canvas\.width = width/);
+  assert.match(mountCanvasSource(), /canvas\.height = height/);
+  assert.match(mountCanvasSource(), /style\.width = `\$\{width\}px`/);
+  assert.match(mountCanvasSource(), /style\.transform = "none"/);
+  assert.match(mountCanvasSource(), /style\.zoom = "1"/);
+  assert.doesNotMatch(mountCanvasSource(), /devicePixelRatio/);
+  assert.doesNotMatch(mountCanvasSource(), /requestAnimationFrame/);
 });

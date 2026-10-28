@@ -70,6 +70,10 @@ h1 { margin: 0; font-size: clamp(34px, 5vw, 64px); line-height: .98; letter-spac
 .panel-heading h2 { margin: 0; }
 .preview-badge { color: #7f8ba8; font: 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .viewport { display: block; width: 100%; height: auto; border-radius: 8px; background: #0d121e; cursor: crosshair; image-rendering: pixelated; }
+#compare-slot { width: 320px; height: 240px; }
+#compare-slot[data-compare-state="editor"] { width: 720px; height: 480px; }
+#compare-slot .viewport { width: 320px; height: 240px; max-width: none; }
+#compare-slot[data-compare-state="editor"] .viewport { width: 720px; height: 480px; }
 .metrics { padding: 11px 2px 0; color: #93a1c3; font: 12px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
 .inspector { padding: 20px; }
 h2 { margin: 0 0 8px; font-size: 18px; }
