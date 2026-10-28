@@ -873,6 +873,11 @@ mod tests {
         assert!(webgl.contains("href=\"./index.html\""));
         assert!(webgl.contains("aria-current=\"page\">WebGL"));
         assert!(webgl.contains("./api-nav.css"));
+        assert!(webgl.contains("\"./compare-scene.js\""));
+        assert!(webgl.contains("\"./compare-present.js\""));
+        assert!(webgl.contains("\"./native-webgl.js\""));
+        assert!(!webgl.contains("native-webgpu.js"));
+        assert!(!index.contains("native-webgl.js"));
         assert!(!webgl.contains("pkg-mt"));
         assert!(!webgl.contains("coop-coep.js"));
         assert!(!webgl.contains("<base"));

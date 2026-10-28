@@ -29,6 +29,7 @@
         presentReference,
         readCanvasPixel,
       } from "./compare-present.js";
+      import { presentNativeWebgl } from "./native-webgl.js";
 
       try {
         const wasm = await import("./pkg-webgl/glgpu_webgl_web.js");
@@ -39,7 +40,10 @@
             presentReference(slot, wasm.compare_frame_rgba8);
             return;
           }
-          throw new Error(`glgpuPresentCompare cannot present ${mode} yet`);
+          if (mode === "native") {
+            return presentNativeWebgl(slot);
+          }
+          throw new Error(`unknown compare mode ${mode}`);
         };
         window.glgpuPresentEditorFrame = (width, height, pixels) => {
           presentEditorFrame(document.getElementById("compare-slot"), width, height, pixels);
