@@ -14,9 +14,9 @@
 
 ## 线程模型
 
-目标：浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，在本项目里放在 **Worker + Wasm 后端**。管线结果先写入 Worker 的离屏缓冲区，不直接画到页面 canvas。之后才经 Canvas 2D present 路径把这块缓冲区交到可见 canvas。主线程暴露 Web API façade。主线程与该后端之间的高效通信是 **SharedArrayBuffer**，以及可转移 `ArrayBuffer` / `OffscreenCanvas` 的零拷贝转移。普通 `postMessage` 拷贝不是这条高效路径。GL/GPU 语义不在页面 canvas 上执行。
+目标：浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，在本项目里放在 **Worker + Wasm 后端**。管线在 Worker 里的绘制目标是 **OffscreenCanvas（离屏 canvas）**，不是页面 canvas。之后才经 Canvas 2D present 路径把这块 OffscreenCanvas 交到可见 canvas。是否另留一份 CPU framebuffer/cache、只画 OffscreenCanvas，还是两者都保留，尚未决定，这次不在代码里锁定。主线程暴露 Web API façade。主线程与该后端之间的高效通信是 **SharedArrayBuffer**，以及可转移 `ArrayBuffer` / OffscreenCanvas 的零拷贝转移。普通 `postMessage` 拷贝不是这条高效路径。GL/GPU 语义不在页面 canvas 上执行。
 
-现状：`/webgl.html` 仍把 `glgpu-webgl-web` 作为主线程上的单线程 Wasm 跑 webgl-mock，再用 Canvas 2D `putImageData` 把像素交到页面 canvas。还没有 Web API façade，也没有 Worker 离屏缓冲区，更没有 SharedArrayBuffer 或零拷贝转移这条通道。这次不把 demo 迁到 Worker。WebGPU 主线上的 Rayon worker 只执行 tile kernel，同样不是这条目标模型。
+现状：`/webgl.html` 仍把 `glgpu-webgl-web` 作为主线程上的单线程 Wasm 跑 webgl-mock，再用 Canvas 2D `putImageData` 把像素交到页面 canvas。还没有 Web API façade，也没有 Worker OffscreenCanvas，更没有 SharedArrayBuffer 或零拷贝转移这条通道。这次不把 demo 迁到 Worker。WebGPU 主线上的 Rayon worker 只执行 tile kernel，同样不是这条目标模型。
 
 ## 背景
 
@@ -30,7 +30,7 @@
 
 1. 新增并行的 webgl-mock。目标与 webgpu-mock 相同：从 0 到 1，在 CPU 上从零实现一套完整的 WebGL2 风格栈。执行、校验和光栅都写在本仓库的软件路径里。页面上的三角形是 demo。
 2. 这条栈不依赖原生 WebGL 或原生 WebGPU。禁止把 `WebGLRenderingContext`、`canvas.getContext("webgl2")`、`navigator.gpu` 或任何宿主 GPU 绘制调用当作后端、参考执行器或脚手架依赖。宿主 GPU 将来若出现，也只能作为测试 oracle，不能成为渲染后端；这一条与 ADR 0001 对宿主 WebGPU / WebGL 的拒绝一致。
-3. 最终画面仍按项目既有方向，把 CPU framebuffer 转成 RGBA8，经 Canvas 2D `putImageData` 呈现。目标是先写入 Worker 离屏缓冲区，再经 Canvas 2D present 到可见 canvas；页面 canvas 不是管线的绘制目标。本决策的脚手架还没有接入呈现；当前 demo 页在主线程壳 crate 里把像素直接交给页面 canvas，那不是 `DemoContext` 的 present 方法。
+3. 最终画面仍按项目既有方向，把 CPU framebuffer 转成 RGBA8，经 Canvas 2D `putImageData` 呈现。目标绘制面是 Worker 里的 OffscreenCanvas（离屏 canvas），页面 canvas 不是管线的绘制目标；是否另留 CPU framebuffer/cache 尚未决定。本决策的脚手架还没有接入呈现；当前 demo 页在主线程壳 crate 里把像素直接交给页面 canvas，那不是 `DemoContext` 的 present 方法。
 4. 产品顺序不变。ADR 0001 仍是主线。P0 的 `NOT WEBGPU CONFORMANT` 文案不得删除或改成合规声明。webgl-mock 自己的永久标识是 `webgl-mock — NOT WEBGL CONFORMANT`。支持矩阵在实现对应行为之前只能记录 `NotStarted`，不能把缺口报成已支持。
 5. 首个变更只放入脚手架。**这一条已被文末补充决定取代：** 这条 CPU 栈可以在 `glgpu-webgl` 内继续实现独立的 CPU 子集，但仍然不实现 WebGL 状态机、`drawArrays` / `drawElements`、`readPixels`、JavaScript façade 或浏览器上下文包装。
 6. 早期文字要求以后复用公共 CPU 内核。**这一条已被文末补充决定取代：** 这条栈保持独立，不依赖 WebGPU crate，也不调用浏览器渲染器。

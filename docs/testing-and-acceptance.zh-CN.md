@@ -5,7 +5,7 @@
 > 适用范围：`CpuGpuSubset`、CPU triangle raster、WGSL parse/validate、Canvas 2D ST/MT 演示  
 > 规范与能力边界以 [`spec-lock.toml`](../spec-lock.toml) 和 [`webgpu-p0.toml`](support-matrix/webgpu-p0.toml) 为准
 
-`glgpu-webgl` 的测试锁定 webgl-mock：不是原生 WebGL、不是合规实现、禁止原生 WebGL / 原生 WebGPU、RGBA8 clear、WebGL clip 体积 `-w..w`、左下窗口、shader 驱动的三角形 demo、ESSL 子集解析，以及 CPU 解释器的源码 span 和逐步局部变量记录。那些测试不是 WebGL 验收，也不扩大本文的 P0 范围。demo 页当前仍是主线程单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。目标是先写入 Worker 离屏缓冲区，再经 Canvas 2D present 到可见 canvas。
+`glgpu-webgl` 的测试锁定 webgl-mock：不是原生 WebGL、不是合规实现、禁止原生 WebGL / 原生 WebGPU、RGBA8 clear、WebGL clip 体积 `-w..w`、左下窗口、shader 驱动的三角形 demo、ESSL 子集解析，以及 CPU 解释器的源码 span 和逐步局部变量记录。那些测试不是 WebGL 验收，也不扩大本文的 P0 范围。demo 页当前仍是主线程单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。目标绘制面是 Worker 里的 OffscreenCanvas（离屏 canvas），再经 Canvas 2D present 到可见 canvas。是否另留 CPU framebuffer/cache 尚未决定。
 
 ## 1. 文档目的与判定原则
 

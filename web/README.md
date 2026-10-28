@@ -2,7 +2,7 @@
 
 本目录不是传统前端应用。`index.html` 只提供站点顶栏、`#app` mount point、ST/MT capability detection 和最小 Wasm 启动逻辑；webgpu-mock 页的 DOM、样式、事件、Canvas 以及调试 UI 由 `crates/glgpu-web` 创建。`webgl.html` 是 webgl-mock 的另一条 Wasm 入口，UI 由 `crates/glgpu-webgl-web` 创建。顶栏点击另一侧会整页重载。
 
-目标线程模型是：管线结果先写入 Worker 离屏缓冲区，再经 Canvas 2D present 交到可见 canvas，不直接画到页面 canvas。主线程 Web API façade 与 Worker + Wasm 后端之间的高效通信是 SharedArrayBuffer，以及可转移 ArrayBuffer / OffscreenCanvas 的零拷贝转移，不是普通 postMessage 拷贝。现状不同：webgl-mock demo 页是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas；webgpu-mock 的 Rayon worker 只跑 tile kernel。这次没有把 demo 迁到 Worker。
+目标线程模型是：管线在 Worker 里的绘制目标是 OffscreenCanvas（离屏 canvas），再经 Canvas 2D present 交到可见 canvas，不直接画到页面 canvas。是否另留 CPU framebuffer/cache、只画 OffscreenCanvas，还是两者都保留，尚未决定。主线程 Web API façade 与 Worker + Wasm 后端之间的高效通信是 SharedArrayBuffer，以及可转移 ArrayBuffer / OffscreenCanvas 的零拷贝转移，不是普通 postMessage 拷贝。现状不同：webgl-mock demo 页是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas；webgpu-mock 的 Rayon worker 只跑 tile kernel。这次没有把 demo 迁到 Worker。
 
 ## 生成目录
 
