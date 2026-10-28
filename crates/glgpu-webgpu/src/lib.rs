@@ -3,9 +3,11 @@
 //! This crate intentionally exposes [`CpuGpuSubset`] rather than pretending to
 //! be native WebGPU or a conformant browser `GPUAdapter`. The banner stays
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. Its queue is synchronous and bound to
-//! the creating owner thread. The target split is a main-thread Web API façade
-//! messaging a Worker + Wasm backend, with Canvas 2D only presenting. That
-//! split is not this P0 queue. JavaScript/WebIDL objects, promises, error
+//! the creating owner thread. The target writes a Worker offscreen buffer, then
+//! presents it to the visible canvas through Canvas 2D. The main-thread Web API
+//! façade reaches that Worker + Wasm backend through SharedArrayBuffer and/or a
+//! zero-copy transfer, not a copied `postMessage`. That split is not this P0
+//! queue. JavaScript/WebIDL objects, promises, error
 //! scopes, and standard asynchronous queue semantics are explicitly outside
 //! this P0 contract.
 

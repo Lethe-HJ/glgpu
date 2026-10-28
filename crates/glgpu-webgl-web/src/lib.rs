@@ -5,9 +5,12 @@
 //! `getContext("webgl")`, `getContext("webgl2")`, or `navigator.gpu`, and it
 //! does not link the webgpu-mock crates.
 //!
-//! Current state: single-threaded Wasm on the main thread. Canvas 2D only
-//! presents the framebuffer. The target is a main-thread Web API façade that
-//! messages a Worker + Wasm backend; this page does not start that worker.
+//! Current state: single-threaded Wasm on the main thread. `putImageData`
+//! copies the frame onto the page canvas. The target writes a Worker offscreen
+//! buffer first, then presents that buffer to the visible canvas through
+//! Canvas 2D. The main thread would reach that Worker + Wasm backend through
+//! SharedArrayBuffer and/or a zero-copy transfer, not a copied `postMessage`.
+//! This page does not start that worker.
 //!
 //! The permanent banner stays `webgl-mock — NOT WEBGL CONFORMANT`.
 

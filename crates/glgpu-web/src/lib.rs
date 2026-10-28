@@ -2,10 +2,13 @@
 //!
 //! This is not native WebGPU. The page contract stays
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. The triangle on the page is a demo.
-//! Today the P0 subset runs in Wasm on the main owner thread. Rayon workers,
-//! when the MT package is loaded, only run tile kernels. Canvas 2D presents
-//! the framebuffer. The target is a main-thread Web API façade that messages
-//! a Worker + Wasm backend; this page does not implement that split yet.
+//! Today the P0 subset runs in Wasm on the main owner thread and `putImageData`
+//! copies the frame onto the page canvas. Rayon workers, when the MT package is
+//! loaded, only run tile kernels. The target writes a Worker offscreen buffer
+//! first, then presents it to the visible canvas through Canvas 2D. The main
+//! thread would reach that Worker + Wasm backend through SharedArrayBuffer
+//! and/or a zero-copy transfer, not a copied `postMessage`. This page does not
+//! implement that split yet.
 
 #![forbid(unsafe_code)]
 

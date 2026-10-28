@@ -4,10 +4,14 @@
 //! `glgpu-webgpu`, `glgpu-shader`, `glgpu-core`, or the other webgpu-mock
 //! crates, and it does not call browser WebGL or WebGPU.
 //!
-//! Target split: a main-thread Web API façade messages a Worker + Wasm backend,
-//! and Canvas 2D only presents the framebuffer. This crate is that backend's
-//! CPU implementation. The demo page still runs it as single-threaded Wasm on
-//! the main thread; there is no worker backend yet.
+//! Target split: the pipeline writes a Worker offscreen buffer, not the page
+//! canvas. Presentation then reaches the visible canvas through the Canvas 2D
+//! present path. The main-thread Web API façade reaches that Worker + Wasm
+//! backend through SharedArrayBuffer and/or a zero-copy transfer (a
+//! transferable ArrayBuffer or an OffscreenCanvas transfer), not a copied
+//! `postMessage`. This crate is that backend's CPU implementation. The demo
+//! page still runs it as single-threaded Wasm on the main thread and copies
+//! pixels straight to the page canvas; there is no worker offscreen buffer yet.
 //!
 //! The compile path is ESSL source, then an AST, then self-authored bytecode,
 //! then a CPU interpreter. There is no machine-code JIT. Instruction spans and
@@ -54,7 +58,7 @@ pub const CONFORMANCE_BANNER: &str = "webgl-mock — NOT WEBGL CONFORMANT";
 pub const WEBGL_MOCK: &str = "webgl-mock is a WebGL2-style visualization running on the CPU. It is not native WebGL and not native WebGPU.";
 
 /// Target thread split versus the demo page today.
-pub const THREADING: &str = "Target: main-thread Web API facade messages a Worker + Wasm backend; Canvas 2D only presents. Current demo: single-threaded Wasm on the main thread, then Canvas 2D putImageData. No worker backend yet.";
+pub const THREADING: &str = "Target: the pipeline writes a Worker offscreen buffer, not the page canvas. Presentation then reaches the visible canvas through the Canvas 2D present path. The main-thread Web API facade reaches the Worker + Wasm backend through SharedArrayBuffer and/or zero-copy transfer (transferable ArrayBuffer or OffscreenCanvas transfer), not a copied postMessage. Current demo: single-threaded Wasm on the main thread, then Canvas 2D putImageData onto the page canvas. No worker offscreen buffer yet.";
 
 /// Lowering and execution shape. JIT is intentionally absent.
 pub const COMPILE_PATH: &str =
@@ -219,13 +223,13 @@ impl WebGlMock {
             Capability::DrawCall => "drawArrays and drawElements are not implemented",
             Capability::ReadPixels => "synchronous readPixels is not implemented",
             Capability::ExplicitPresent => {
-                "DemoContext has no present method. The demo page copies RGBA8 with Canvas 2D putImageData on the main thread; Canvas 2D only presents. The target backend is Worker + Wasm. This copy is not native WebGL present"
+                "DemoContext has no present method. The current demo copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread. The target writes a Worker offscreen buffer first, then presents that buffer to the visible canvas. This copy is not native WebGL present"
             }
             Capability::SingleStepDebugger => {
                 "spans, local snapshots, and interface snapshots exist, but there is no single-step pause UI. The debug page runs the whole frame; it does not step"
             }
             Capability::JavaScriptFacade => {
-                "no JavaScript WebGL facade. The target main thread would expose that facade and message a Worker + Wasm backend. Today the demo shell runs webgl-mock on the main thread. These objects are not native WebGL objects"
+                "no JavaScript WebGL facade. The target main thread would expose that facade and reach a Worker + Wasm backend through SharedArrayBuffer and/or zero-copy transfer, not a copied postMessage. Today the demo shell runs webgl-mock on the main thread. These objects are not native WebGL objects"
             }
             Capability::HostWebGlOrWebGpu => {
                 "native WebGLRenderingContext and navigator.gpu are forbidden backends"
@@ -269,10 +273,14 @@ mod tests {
         assert!(WEBGL_MOCK.contains("not native WebGL"));
         assert!(WEBGL_MOCK.contains("not native WebGPU"));
         assert!(!WEBGL_MOCK.to_ascii_lowercase().contains("learning"));
+        assert!(THREADING.contains("Worker offscreen buffer"));
         assert!(THREADING.contains("Worker + Wasm"));
         assert!(THREADING.contains("main thread"));
         assert!(THREADING.contains("Canvas 2D"));
-        assert!(THREADING.contains("No worker backend yet"));
+        assert!(THREADING.contains("SharedArrayBuffer"));
+        assert!(THREADING.contains("zero-copy transfer"));
+        assert!(THREADING.contains("not a copied postMessage"));
+        assert!(THREADING.contains("No worker offscreen buffer yet"));
         assert!(COMPILE_PATH.contains("CPU interpreter"));
         assert!(COMPILE_PATH.contains("no machine-code JIT"));
         assert!(ESSL_REFERENCE.contains("glslang 16.6.0"));

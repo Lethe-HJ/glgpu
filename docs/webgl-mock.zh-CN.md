@@ -13,9 +13,9 @@
 
 ## 线程模型
 
-目标：浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade，并用高效消息把调用送进该后端。Canvas 2D 只呈现 framebuffer。
+目标：浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。管线结果先写入 Worker 的离屏缓冲区，不直接画到页面 canvas。之后才经 Canvas 2D present 路径交到可见 canvas。主线程暴露 Web API façade。主线程与该后端之间的高效通信是 **SharedArrayBuffer**，以及可转移 `ArrayBuffer` / `OffscreenCanvas` 的零拷贝转移。普通 `postMessage` 拷贝不是这条高效路径。
 
-现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 呈现。还没有 Web API façade，也没有 Worker 后端。这次不迁移。
+现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把像素交到页面 canvas。还没有 Web API façade，也没有 Worker 离屏缓冲区，更没有 SharedArrayBuffer 或零拷贝转移这条通道。这次不迁移。
 
 ## 这条栈做什么
 
