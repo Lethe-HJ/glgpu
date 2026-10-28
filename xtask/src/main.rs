@@ -38,6 +38,7 @@ fn run(args: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), Box<dyn
             require_no_arguments("build-web-mt", args)?;
             build_web_mt()
         }
+        "e2e-compare" => e2e_compare(parse_e2e_compare_options(args)?),
         "help" | "--help" | "-h" => {
             println!("{}", usage());
             Ok(())
@@ -47,7 +48,154 @@ fn run(args: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), Box<dyn
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  xtask serve [--dir <directory>] [--bind <address>]\n  xtask build-web [--crate <wasm-crate>] [--out-dir <directory>] [--out-name <name>] [--dev|--release] [-- <extra cargo build args>]\n  xtask build-web-mt"
+    "Usage:\n  xtask serve [--dir <directory>] [--bind <address>]\n  xtask build-web [--crate <wasm-crate>] [--out-dir <directory>] [--out-name <name>] [--dev|--release] [-- <extra cargo build args>]\n  xtask build-web-mt\n  xtask e2e-compare [--bind <address>]"
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct E2eCompareOptions {
+    bind: String,
+}
+
+fn parse_e2e_compare_options(
+    args: impl IntoIterator<Item = std::ffi::OsString>,
+) -> Result<E2eCompareOptions, TaskError> {
+    let mut bind = "127.0.0.1:8765".to_owned();
+    let mut args = args.into_iter();
+    while let Some(argument) = args.next() {
+        match argument.to_string_lossy().as_ref() {
+            "--bind" => bind = required_value("--bind", args.next())?,
+            other => {
+                return Err(TaskError::new(format!(
+                    "unknown e2e-compare argument {other:?}\n\n{}",
+                    usage()
+                )));
+            }
+        }
+    }
+    Ok(E2eCompareOptions { bind })
+}
+
+const COMPARE_ERROR_CHROME: &str =
+    "原生对照需要本机已安装的 Google Chrome。Playwright 的 chrome 通道启动失败，命令失败。";
+
+struct KillOnDrop(std::process::Child);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn e2e_compare(options: E2eCompareOptions) -> Result<(), Box<dyn Error>> {
+    let workspace = workspace_root();
+    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let status = Command::new(&cargo)
+        .current_dir(&workspace)
+        .args(["xtask", "build-web", "--release"])
+        .status()?;
+    if !status.success() {
+        return Err(TaskError::new("build-web --release failed").into());
+    }
+    let status = Command::new(&cargo)
+        .current_dir(&workspace)
+        .args([
+            "xtask",
+            "build-web",
+            "--release",
+            "--crate",
+            "crates/glgpu-webgl-web",
+            "--out-dir",
+            "web/pkg-webgl",
+            "--out-name",
+            "glgpu_webgl_web",
+        ])
+        .status()?;
+    if !status.success() {
+        return Err(TaskError::new("webgl wasm build failed").into());
+    }
+
+    let modules = workspace.join("e2e/node_modules");
+    let lock = workspace.join("e2e/package-lock.json");
+    let needs_install = match (fs::metadata(&modules), fs::metadata(&lock)) {
+        (Ok(modules_meta), Ok(lock_meta)) => {
+            !modules_meta.is_dir() || modules_meta.modified()? < lock_meta.modified()?
+        }
+        _ => true,
+    };
+    if needs_install {
+        let status = Command::new("npm")
+            .current_dir(workspace.join("e2e"))
+            .args(["ci"])
+            .status()?;
+        if !status.success() {
+            return Err(TaskError::new("npm ci in e2e/ failed").into());
+        }
+    }
+
+    let _server = KillOnDrop(
+        Command::new(&cargo)
+            .current_dir(&workspace)
+            .args(["xtask", "serve", "--bind", &options.bind])
+            .spawn()?,
+    );
+    wait_for_http_ok(&options.bind, Duration::from_secs(30))?;
+
+    let playwright_name = if cfg!(windows) {
+        "playwright.cmd"
+    } else {
+        "playwright"
+    };
+    let playwright = workspace
+        .join("e2e/node_modules/.bin")
+        .join(playwright_name);
+    let output = Command::new(playwright)
+        .current_dir(&workspace)
+        .env("GLGPU_E2E_BASE", format!("http://{}", options.bind))
+        .args(["test", "--config", "e2e/playwright.config.mjs"])
+        .output()?;
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    eprint!("{combined}");
+    if !output.status.success() {
+        let mentions_sentence = combined.contains(COMPARE_ERROR_CHROME)
+            || combined.contains("当前环境没有可用的 WebGPU")
+            || combined.contains("当前环境不能创建 WebGL2");
+        if !mentions_sentence
+            && (combined.contains("browserType.launch")
+                || combined.contains("Failed to launch")
+                || combined.contains("Chromium distribution"))
+        {
+            eprintln!("{COMPARE_ERROR_CHROME}");
+        }
+        return Err(TaskError::new("e2e-compare failed").into());
+    }
+    Ok(())
+}
+
+fn wait_for_http_ok(bind: &str, timeout: Duration) -> Result<(), TaskError> {
+    let started = std::time::Instant::now();
+    let request = format!("GET / HTTP/1.1\r\nHost: {bind}\r\nConnection: close\r\n\r\n");
+    loop {
+        if let Ok(mut stream) = std::net::TcpStream::connect(bind) {
+            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            if stream.write_all(request.as_bytes()).is_ok() {
+                let mut buffer = String::new();
+                if stream.read_to_string(&mut buffer).is_ok() && buffer.contains("200") {
+                    return Ok(());
+                }
+            }
+        }
+        if started.elapsed() > timeout {
+            return Err(TaskError::new(format!(
+                "timed out waiting for http://{bind}/"
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 #[derive(Debug)]
@@ -1005,6 +1153,31 @@ mod tests {
         );
         assert!(is_expected_wasm_bindgen_version("wasm-bindgen 0.2.127\n"));
         assert!(!is_expected_wasm_bindgen_version("wasm-bindgen 0.2.126\n"));
+    }
+
+    #[test]
+    fn e2e_compare_defaults_the_bind_address() {
+        let options = parse_e2e_compare_options(std::iter::empty::<OsString>()).unwrap();
+        assert_eq!(options.bind, "127.0.0.1:8765");
+    }
+
+    #[test]
+    fn e2e_compare_accepts_bind_and_rejects_other_arguments() {
+        let options =
+            parse_e2e_compare_options([OsString::from("--bind"), OsString::from("127.0.0.1:9")])
+                .unwrap();
+        assert_eq!(options.bind, "127.0.0.1:9");
+
+        let error = parse_e2e_compare_options([OsString::from("--release")]).unwrap_err();
+        assert!(error.to_string().contains("unknown e2e-compare argument"));
+
+        let error = run([OsString::from("e2e-compare"), OsString::from("--gpu")]).unwrap_err();
+        assert!(error.to_string().contains("unknown e2e-compare argument"));
+    }
+
+    #[test]
+    fn usage_lists_e2e_compare() {
+        assert!(usage().contains("xtask e2e-compare [--bind <address>]"));
     }
 
     #[test]
