@@ -51,6 +51,24 @@ cargo xtask serve
 - ST：`http://127.0.0.1:8080/`
 - MT：`http://127.0.0.1:8080/?threads=1`
 
+## GitHub Pages
+
+推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 ST 与 MT 包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
+
+```text
+https://Lethe-HJ.github.io/glgpu/
+```
+
+启用一次：仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。首次如果部署作业提示 Pages 尚未启用，保存该设置后重跑 `pages` workflow。
+
+- `/` 启动 ST，不注册 service worker。
+- `/?threads=1` 请求 MT。GitHub Pages 不能配置自定义响应头，因此这个入口用同源 [`web/coop-coep.js`](web/coop-coep.js) 补上与 `cargo xtask serve` 相同的 `COOP: same-origin` 和 `COEP: require-corp`，然后自动刷新一次。
+- 浏览器不接受 service worker 合成的隔离头时，现有 loader 回退到 ST。硬刷新会绕过 service worker，可能再刷新一次。
+- 页面使用相对 URL，同一份 `index.html` 在本地 `/` 和项目站点 `/glgpu/` 下都能解析。不要加 `<base>`。
+- `cargo xtask serve` 仍由服务器发送真实隔离头。页面已经 `crossOriginIsolated` 时不会注册 service worker，本地 ST/MT 流程不变。
+
+`curl -I https://Lethe-HJ.github.io/glgpu/` 看不到 COOP/COEP。这是 Pages 的平台限制，不是工作流漏了响应头。隔离发生在 `?threads=1` 的第二次文档导航里。本地验收继续用 `cargo xtask serve`。
+
 MT loader 会检查 `crossOriginIsolated`、`SharedArrayBuffer`、共享 `WebAssembly.Memory` 和逻辑 CPU 数。条件不满足或初始化失败时会加载独立的 ST 包。线程池为 Wasm 实例级全局池，预留一个逻辑 CPU 给 owner，最多创建 8 个 Rayon worker。
 
 MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 不接受 shared typed array。因此 MT 呈现必须复制到普通 `Uint8ClampedArray`；ST 保留直接构造路径。这是明确的性能成本，不宣称零拷贝。
@@ -83,7 +101,8 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 | `crates/glgpu-canvas2d` | RGBA8 校验与 Canvas 2D 呈现边界 |
 | `crates/glgpu-web` | Rust/Wasm 调试页与交互 |
 | `xtask` | ST/MT 构建和本地隔离服务器 |
-| `web` | 最小 HTML loader；生成包位于被忽略的 `pkg*` 目录 |
+| `web` | 最小 HTML loader、Pages 隔离 worker；生成包位于被忽略的 `pkg*` 目录 |
+| `.github/workflows/pages.yml` | 构建 ST/MT 并发布到 GitHub Pages |
 | `examples/triangle` | P0 WGSL 校验样例 |
 | `docs` | 架构、API、开发、测试、ADR 和支持矩阵 |
 

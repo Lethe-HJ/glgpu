@@ -334,6 +334,14 @@ min(8, max(1, hardwareConcurrency - 1))
 
 当前 `xtask serve` 没有设置生产 CSP，也没有覆盖第三方资源、iframe 或 popup 集成；不能把本地服务器通过等同于生产部署完成。
 
+### 9.3 GitHub Pages
+
+`pages` workflow 负责构建 ST/MT 并上传 `web/`。它不代替 L9 浏览器验收。
+
+对 `https://Lethe-HJ.github.io/glgpu/` 执行 `curl -I` 时期望 **没有** COOP/COEP。Pages 不能发这些头。打开 `/` 应显示 `build=ST`，且不依赖 service worker。打开 `/?threads=1` 会经过一次自动刷新；浏览器接受 `web/coop-coep.js` 合成的隔离头时，`crossOriginIsolated === true` 且 capability 行显示 `build=MT`。拒绝时必须仍能看到 ST，并在 Console 留下既有的 fallback 警告。
+
+本地 `cargo xtask serve` 的 HEAD 检查不变：每个响应都由服务器发送 COOP/COEP，且该路径不注册 Pages worker。
+
 ## 10. 性能测量口径
 
 ### 10.1 当前 UI 数值代表什么

@@ -852,6 +852,30 @@ mod tests {
     }
 
     #[test]
+    fn pages_loader_stays_relative_and_serve_headers_stay_real() {
+        let index =
+            fs::read_to_string(workspace_root().join("web/index.html")).expect("web/index.html");
+        assert!(index.contains("\"./pkg/glgpu_web.js\""));
+        assert!(index.contains("\"./pkg-mt/glgpu_web.js\""));
+        assert!(index.contains("./coop-coep.js"));
+        assert!(!index.contains("<base"));
+        assert!(!index.contains("github.io"));
+
+        let shim = fs::read_to_string(workspace_root().join("web/coop-coep.js"))
+            .expect("web/coop-coep.js");
+        assert!(shim.contains("Cross-Origin-Opener-Policy"));
+        assert!(shim.contains("\"same-origin\""));
+        assert!(shim.contains("Cross-Origin-Embedder-Policy"));
+        assert!(shim.contains("\"require-corp\""));
+        assert!(shim.contains("window.crossOriginIsolated"));
+
+        let headers = response_headers(200, "OK", "text/html; charset=utf-8", 1);
+        assert!(headers.contains("Cross-Origin-Opener-Policy: same-origin\r\n"));
+        assert!(headers.contains("Cross-Origin-Embedder-Policy: require-corp\r\n"));
+        assert!(headers.contains("Cross-Origin-Resource-Policy: same-origin\r\n"));
+    }
+
+    #[test]
     fn every_response_has_cross_origin_isolation_headers() {
         let headers = response_headers(200, "OK", "application/wasm", 42);
         assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));

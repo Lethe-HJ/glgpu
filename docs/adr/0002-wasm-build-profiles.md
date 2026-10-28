@@ -92,6 +92,10 @@ Wasm 使用 `Content-Type: application/wasm`。生产部署还必须使用 HTTPS
 
 若宿主无法设置上述响应头，必须使用 ST，不能通过关闭浏览器安全检查规避。
 
+GitHub Pages（含 `actions/deploy-pages`）属于这种宿主：它不能配置自定义响应头，`_headers` 也不会生效。仓库仍把 ST 和 MT 产物一起发布到 `https://Lethe-HJ.github.io/glgpu/`。`/` 只启动 ST。`/?threads=1` 在页面尚未隔离时注册同源 `web/coop-coep.js`，由 service worker 在后续响应上写入与本地服务器相同的 `COOP: same-origin`、`COEP: require-corp` 和 `CORP: same-origin`，然后刷新一次。这是在补上同一组隔离头，不是关闭浏览器检查。浏览器拒绝这些头、硬刷新绕过 worker，或 worker 未能取得控制时，loader 回退 ST。
+
+`cargo xtask serve` 继续发送真实响应头。`crossOriginIsolated === true` 时页面不注册该 worker。已经带有 COOP/COEP 的响应会被 worker 原样转发，避免改写本地服务器的字节流。
+
 ## Canvas presentation
 
 ST Wasm memory 是普通 ArrayBuffer，`glgpu-canvas2d` 使用 `Clamped<&[u8]>` 构造 `ImageData`。

@@ -43,6 +43,7 @@
 - `wasm-bindgen-rayon/no-bundler` worker 初始化；
 - MT SharedArrayBuffer → non-shared ImageData staging；
 - Rust/Wasm UI、Canvas 点击追踪、COOP/COEP 本地服务器；
+- GitHub Pages 发布 ST/MT 调试页；Pages 不能发隔离头，`?threads=1` 由同源 service worker 补齐，失败回退 ST；
 - Chromium 本机 ST/MT smoke test，当前 demo hash 一致。
 
 ### 尚未完成的 P0 出口项

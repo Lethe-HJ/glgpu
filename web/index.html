@@ -7,9 +7,23 @@
   </head>
   <body>
     <main id="app">正在载入 GLGPU Rust/Wasm…</main>
+    <!--
+      相对 URL 同时覆盖本地 `/`（cargo xtask serve）和 GitHub Pages 项目站点 `/<repo>/`。
+      不要添加 base 元素：它会改变本地与 Pages 的解析结果。
+      coop-coep.js 仅在请求 MT 且页面尚未跨源隔离时注册；本地服务器已经发送 COOP/COEP。
+    -->
+    <script src="./coop-coep.js"></script>
     <script type="module">
       const wantsThreads = new URLSearchParams(location.search).get("threads") === "1";
       const maxRayonWorkers = 8;
+
+      let reloadingForIsolation = false;
+      try {
+        const isolation = await (window.glgpuIsolationReady ?? Promise.resolve(null));
+        reloadingForIsolation = Boolean(isolation && isolation.reloading);
+      } catch (error) {
+        console.warn("GLGPU isolation shim failed; continuing", error);
+      }
 
       function supportsWasmThreads() {
         if (
@@ -45,23 +59,25 @@
         wasm.boot(true);
       }
 
-      try {
-        if (wantsThreads && supportsWasmThreads()) {
-          try {
-            await bootMultiThread();
-          } catch (error) {
-            console.warn("GLGPU MT boot failed; falling back to ST", error);
+      if (!reloadingForIsolation) {
+        try {
+          if (wantsThreads && supportsWasmThreads()) {
+            try {
+              await bootMultiThread();
+            } catch (error) {
+              console.warn("GLGPU MT boot failed; falling back to ST", error);
+              await bootSingleThread();
+            }
+          } else {
+            if (wantsThreads) {
+              console.warn("GLGPU MT requested without cross-origin isolation; using ST");
+            }
             await bootSingleThread();
           }
-        } else {
-          if (wantsThreads) {
-            console.warn("GLGPU MT requested without cross-origin isolation; using ST");
-          }
-          await bootSingleThread();
+        } catch (error) {
+          console.error("GLGPU boot failed", error);
+          document.querySelector("#app").textContent = `GLGPU 启动失败：${error}`;
         }
-      } catch (error) {
-        console.error("GLGPU boot failed", error);
-        document.querySelector("#app").textContent = `GLGPU 启动失败：${error}`;
       }
     </script>
   </body>

@@ -23,6 +23,10 @@ cargo xtask serve
 
 不要直接使用不带响应头的通用静态服务器测试 MT。`cargo xtask serve` 会为 HTML、JavaScript、Wasm 和 worker helper 统一发送 COOP/COEP/CORP，并为 `.wasm` 返回 `application/wasm`。
 
+`index.html`、`coop-coep.js` 和两个生成包都使用相对 URL，因此同一目录既可以在本地 `/` 提供，也可以在 GitHub Pages 项目站点 `/<repo>/` 提供。不要添加 `<base>`。
+
+GitHub Pages 不能发送 COOP/COEP。`coop-coep.js` 只在 URL 带 `threads=1` 且 `crossOriginIsolated !== true` 时注册，给后续导航补上与本地服务器相同的隔离头并刷新一次。本地 `cargo xtask serve` 已经隔离页面，所以不会注册这个 worker。发布步骤见[开发指南](../docs/development-guide.zh-CN.md)的 GitHub Pages 一节。
+
 ## 所有权
 
 - 浏览器主线程拥有 `CpuDevice`、同步 `ImmediateMainOwnerQueue`、DOM 和 Canvas 2D context；
@@ -36,6 +40,7 @@ cargo xtask serve
 - UI、WGSL 编辑器、高亮、本地保存、CPU demo 预览、编译诊断和事件修改 `crates/glgpu-web/src/lib.rs`；
 - RGBA8/ImageData 边界修改 `crates/glgpu-canvas2d/src/lib.rs`；
 - loader capability/fallback 修改 `web/index.html`；
+- Pages 上的 COOP/COEP service worker 修改 `web/coop-coep.js`；本地响应头仍只改 `xtask/src/main.rs`；
 - 构建和 HTTP header 修改 `xtask/src/main.rs`；
 - 修改后必须重建相应 artifact，并按[测试与验收](../docs/testing-and-acceptance.zh-CN.md)复测 ST/MT。
 
