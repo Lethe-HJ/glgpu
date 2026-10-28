@@ -222,7 +222,7 @@ MIME 必须满足：
 
 1. 完成两套 release 构建并启动 `cargo xtask serve`；
 2. 打开 `http://127.0.0.1:8080/`；
-3. 记录 capability 行中的 `build=ST` 和首帧 metrics hash；
+3. 记录 capability 行中的 `build=ST`。加载后的第一帧是 320×240 固定对照场景，不是 720×480 hash。720×480 hash 在点击「运行」之后的编辑器预览里读取；
 4. 打开 `http://127.0.0.1:8080/?threads=1`；
 5. 必须确认 capability 行显示 `build=MT`，metrics 显示 `Rayon tile executor`；
 6. 记录 `crossOriginIsolated=true`、SharedArrayBuffer 可见性和 MT hash；
@@ -241,10 +241,10 @@ MIME 必须满足：
 | build 标识 | `ST` | `MT` |
 | executor | sequential | Rayon |
 | `crossOriginIsolated` | `true` | `true` |
-| 首帧 hash | `2898a668a856be56` | `2898a668a856be56` |
+| 编辑器预览 hash | `2898a668a856be56` | `2898a668a856be56` |
 | console warning/error | 无 | 无 |
 
-该 hash 是当前 720×480 P0 triangle scene 的证据快照。实现或场景有意改变后可以更新 hash，但同一个候选版本的 ST/MT 仍必须完全一致。
+该 hash 是编辑器预览的 720×480 P0 triangle scene 的证据快照，不是页面加载后的第一帧。加载后的第一帧是 320×240 固定对照场景。实现或场景有意改变后可以更新 hash，但同一个候选版本的 ST/MT 仍必须完全一致。
 
 ### 7.4 尚未关闭的线程矩阵
 
@@ -255,6 +255,14 @@ min(8, max(1, hardwareConcurrency - 1))
 ```
 
 因此当前证据只覆盖本机自动选择的一个 worker 数，**不能声称 1/2/4/8 worker 都一致**。要关闭该 gate，需要增加显式 worker-count override/test harness，并在独立 Wasm/Worker 实例中分别初始化 1、2、4、8 workers；全局 Rayon pool 不能在同一实例中重复初始化。
+
+### 7.5 本地原生像素对照
+
+`cargo xtask e2e-compare` 只在本地运行。它构建 ST `web/pkg` 和 `web/pkg-webgl`，启动 `serve`，用本机 Google Chrome 打开 `/` 与 `/webgl.html`，并要求每一页的参考画布与原生画布逐字节相等。比较的是 320×240 RGBA8，共 307200 字节，无容差。
+
+缺少 Google Chrome、`navigator.gpu` 或 WebGL2 时命令失败，不是 skip。这条门不替代 `stable_hash64`，也不进入 GitHub Actions。`2898a668a856be56` 仍是编辑器预览的 720×480 ST/MT 证据。加载后的第一帧是 320×240 固定对照场景，角标是 `RGBA8 · 320×240`。点击「运行」后的编辑器预览角标仍是 `RGBA8 · 720×480`。
+
+失败产物写在 `target/e2e-compare/webgpu/` 和 `target/e2e-compare/webgl/`：`reference.png`、`native.png`、`diff.png`、`mismatch.txt`。
 
 ## 8. 浏览器人工检查表
 
