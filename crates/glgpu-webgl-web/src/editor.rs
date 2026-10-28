@@ -569,7 +569,8 @@ mod tests {
     #[test]
     fn page_source_does_not_request_a_browser_webgl_context() {
         let source = include_str!("lib.rs");
-        assert!(source.contains("get_context(\"2d\")"));
+        assert!(source.contains("glgpuPresentEditorFrame"));
+        assert!(!source.contains("get_context(\"2d\")"));
         assert!(!source.contains("get_context(\"webgl"));
         assert!(!source.contains(".gpu()"));
         assert!(source.contains("conformance_banner"));

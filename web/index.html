@@ -25,6 +25,14 @@
     -->
     <script src="./coop-coep.js"></script>
     <script type="module">
+      import "./compare-scene.js";
+      import {
+        presentEditorFrame,
+        presentReference,
+        readCanvasPixel,
+      } from "./compare-present.js";
+      import { presentNativeWebgpu } from "./native-webgpu.js";
+
       const wantsThreads = new URLSearchParams(location.search).get("threads") === "1";
       const maxRayonWorkers = 8;
 
@@ -56,15 +64,35 @@
         }
       }
 
+      function installCompare(wasm) {
+        window.glgpuPresentCompare = (mode) => {
+          const slot = document.getElementById("compare-slot");
+          if (mode === "reference") {
+            presentReference(slot, wasm.compare_frame_rgba8);
+            return;
+          }
+          if (mode === "native") {
+            return presentNativeWebgpu(slot);
+          }
+          throw new Error(`unknown compare mode ${mode}`);
+        };
+        window.glgpuPresentEditorFrame = (width, height, pixels) => {
+          presentEditorFrame(document.getElementById("compare-slot"), width, height, pixels);
+        };
+        window.glgpuReadCanvasPixel = (x, y) => readCanvasPixel(x, y);
+      }
+
       async function bootSingleThread() {
         const wasm = await import("./pkg/glgpu_web.js");
         await wasm.default();
+        installCompare(wasm);
         wasm.boot(false);
       }
 
       async function bootMultiThread() {
         const wasm = await import("./pkg-mt/glgpu_web.js");
         await wasm.default();
+        installCompare(wasm);
         const logicalCpus = navigator.hardwareConcurrency || 1;
         await wasm.initThreadPool(Math.min(maxRayonWorkers, Math.max(1, logicalCpus - 1)));
         wasm.boot(true);

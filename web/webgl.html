@@ -23,9 +23,32 @@
       不要添加 base 元素。这一页不加载多线程包，也不注册 Pages 隔离 worker。
     -->
     <script type="module">
+      import "./compare-scene.js";
+      import {
+        presentEditorFrame,
+        presentReference,
+        readCanvasPixel,
+      } from "./compare-present.js";
+      import { presentNativeWebgl } from "./native-webgl.js";
+
       try {
         const wasm = await import("./pkg-webgl/glgpu_webgl_web.js");
         await wasm.default();
+        window.glgpuPresentCompare = (mode) => {
+          const slot = document.getElementById("compare-slot");
+          if (mode === "reference") {
+            presentReference(slot, wasm.compare_frame_rgba8);
+            return;
+          }
+          if (mode === "native") {
+            return presentNativeWebgl(slot);
+          }
+          throw new Error(`unknown compare mode ${mode}`);
+        };
+        window.glgpuPresentEditorFrame = (width, height, pixels) => {
+          presentEditorFrame(document.getElementById("compare-slot"), width, height, pixels);
+        };
+        window.glgpuReadCanvasPixel = (x, y) => readCanvasPixel(x, y);
         wasm.boot();
       } catch (error) {
         console.error("GLGPU WebGL boot failed", error);
