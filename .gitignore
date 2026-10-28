@@ -6,4 +6,5 @@
 /.vscode/
 .DS_Store
 *.profraw
+e2e/node_modules/
 
