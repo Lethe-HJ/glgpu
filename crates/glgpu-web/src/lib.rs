@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod compare_frame;
+
 #[cfg(any(target_arch = "wasm32", test))]
 mod editor_support {
     use std::fmt::Write as _;
@@ -1230,6 +1232,18 @@ mod app {
     fn color_channel(value: f32) -> u8 {
         (value.clamp(0.0, 1.0) * 255.0).round() as u8
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn compare_frame_rgba8(
+    width: u32,
+    height: u32,
+    clear: &[u8],
+    vertices: &[f32],
+) -> Result<Vec<u8>, wasm_bindgen::JsValue> {
+    compare_frame::compare_frame_rgba8(width, height, clear, vertices)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
 }
 
 #[cfg(target_arch = "wasm32")]
