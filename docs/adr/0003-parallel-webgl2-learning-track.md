@@ -36,7 +36,7 @@ crate 名沿用架构规划第 6 节已经写过的 `glgpu-webgl`。调试页 `g
 
 - 路线图上的 P7a–P9 仍然是产品交付 gate。学习轨道上的切片不能被引用成“WebGL 产品已经开工”或 “WebGL conformant”。
 - `glgpu-webgl` 的测试锁定这条独立栈的行为，不是 WebGL 验收，也不证明与 WebGPU P0 光栅逐像素相同。
-- 学习栈不复用 WebGPU 轨道的 framebuffer。WebGL 左下原点和 clip Z 仍未实现。
+- 学习栈不复用 WebGPU 轨道的 framebuffer。窗口原点和 clip Z 的学习切片见文末 2026-10-28 补充；framebuffer 第 0 行仍是过渡的图像上方。
 
 ## 明确拒绝的做法
 
@@ -59,16 +59,24 @@ crate 名沿用架构规划第 6 节已经写过的 `glgpu-webgl`。调试页 `g
 1. 学习轨道是独立栈。`crates/glgpu-webgl` 不得依赖 `glgpu-core`、`glgpu-trace`、`glgpu-raster`、`glgpu-shader`、`glgpu-webgpu`、`glgpu-canvas2d` 或 `glgpu-web`。ESSL 前端留在这个 crate 里，不放进使用 Naga 的 `glgpu-shader`。WebGL 的 clip 空间和窗口原点以后也在这个 crate 里实现。
 2. 规范阅读基线冻结在 `spec-lock.toml` 的 `[learning_track.webgl2]`：Khronos WebGL 2.0.0（2017-04-11），GLSL ES 3.00.6（2016-01-29）。ESSL 行为的 accept/reject 参照是 Khronos glslang `16.6.0`。该工具是外部 oracle，本 crate 不链接、不调用它。Naga 的 desktop GLSL 前端不是 ESSL 实现。
 3. 编译路径定为：ESSL 源码 → AST → 项目自有、可调试的 bytecode IR → CPU 解释器。第一阶段不做机器码 JIT。指令上的 source span 和逐步局部变量快照留给以后的单步调试器；调试器 UI 本身还没有。
-4. 当前允许的实现止于学习切片：RGBA8 clear；一个已经变换到 framebuffer 坐标的三角形（左上原点，用来对齐 WebGPU P0 三角形 demo 的里程碑，不是 `drawArrays`，也不是 WebGL 左下原点或 clip Z `-w..w`）；`#version 300 es` 的子集词法/语法；只含 `load_const` 和 `move` 的解释器。光照旋转立方体、状态机、present、`readPixels` 和 JavaScript façade 仍未开始。
+4. 当时允许的实现止于学习切片：RGBA8 clear；一个已经变换到 framebuffer 坐标的三角形（左上原点，用来对齐 WebGPU P0 三角形 demo 的里程碑）；`#version 300 es` 的子集词法/语法；只含 `load_const` 和 `move` 的解释器。这条现状已被 2026-10-28 补充取代。光照旋转立方体、状态机、present、`readPixels` 和 JavaScript façade 在该补充之后仍未开始。
 5. 标识保持 `CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT`。支持矩阵按实际能力写成 `implemented` 或 `partial`，不能把已经有测试的切片继续写成全部 `NotStarted`，也不能把 partial 说成 WebGL 入口已经可用。
+
+## 补充决定（2026-10-28，clip 与 shader 三角形）
+
+本补充更新 2026-10-27 补充决定里对“当前实现止于左上屏幕三角形和 `load_const` / `move`”的现状描述。不取代 ADR 0001，也不修改 `[deferred.webgl]`。
+
+1. `glgpu-webgl` 在本 crate 内做 WebGL clip 体积 `-w <= x, y, z <= w`。近平面是 `z = -w`。窗口原点在左下，y 向上。
+2. Framebuffer 第 0 行仍是图像上方，用来保持和 WebGPU P0 三角形相同的画面朝向。换算是 `storage_y = height - window_y`。这是过渡存储，不是 WebGL 窗口原点。以后的 Canvas 2D present 不应再翻一次 y。
+3. 三角形可以由解释器写出的 `v_clip_*` 和 `v_color_*` 驱动。bytecode 增加 uniform / input 读取、output 写入和一次标量乘法。源码 span、逐步局部变量，以及 uniform / input / output 快照都保留。这仍然不是 `drawArrays`。
+4. 子集仍是标量 float，没有 `vec4` 和 `gl_Position`。没有深度缓冲。光照旋转立方体、状态机、present、`readPixels`、JavaScript façade、调试器 UI、JIT 和 glslang CI 仍未开始。
 
 ## 仍未开始的步骤
 
 1. 把 glslang `16.6.0` 接成 native CI 的 accept/reject oracle，只比较子集内外的接受与拒绝，不把它编译进 Wasm。
-2. 在本 crate 内补 WebGL 窗口空间：左下原点和 clip Z `-w..w`。在那之前，屏幕空间三角形保持 partial。
-3. 让解释器执行的顶点结果驱动三角形，而不是继续使用手工屏幕坐标。立方体和光照晚于这条垂直切片。
-4. 扩展 bytecode，使单步记录能覆盖 uniform、varying 和更多运算。然后再做调试器 UI。
-5. mutable state、`drawArrays` / `drawElements`、`readPixels`、Canvas 2D present。
-6. JavaScript 形状的 adapter 放在最后，并且永远不是浏览器原生 `WebGL2RenderingContext`。
+2. 补 `vec4` / `gl_Position`、透视正确的 varying，以及深度测试。立方体和光照晚于这条垂直切片。
+3. 调试器 UI。单步记录已经能覆盖 uniform、vertex input 和 vertex output。
+4. mutable state、`drawArrays` / `drawElements`、`readPixels`、Canvas 2D present。
+5. JavaScript 形状的 adapter 放在最后，并且永远不是浏览器原生 `WebGL2RenderingContext`。
 
 叙事说明、目录草图和命令见 [WebGL2 学习轨道](../webgl2-learning-track.zh-CN.md)。机器可读矩阵见 [`webgl2-learning.toml`](../support-matrix/webgl2-learning.toml)。

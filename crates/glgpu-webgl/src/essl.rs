@@ -77,8 +77,20 @@ pub enum Statement {
 
 #[derive(Clone, Debug)]
 pub enum Expr {
-    Float { bits: u32, span: SourceSpan },
-    Name { name: String, span: SourceSpan },
+    Float {
+        bits: u32,
+        span: SourceSpan,
+    },
+    Name {
+        name: String,
+        span: SourceSpan,
+    },
+    /// One multiplication. The operands are a name or a float literal.
+    Mul {
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+        span: SourceSpan,
+    },
 }
 
 /// Parse the learning subset.
@@ -89,13 +101,13 @@ pub enum Expr {
 /// in float v_in;
 /// out float v_out;
 /// void main() {
-///   float x = 1.0;
-///   float y = x;
+///   float x = a_x * u_scale;
+///   v_clip_x = x;
 /// }
 /// ```
 ///
-/// Constructors, swizzles, control flow, and any version other than
-/// `300 es` are rejected.
+/// One scalar multiplication is accepted. Constructors, swizzles, `+`,
+/// control flow, and any version other than `300 es` are rejected.
 pub fn parse_essl_subset(source: &str) -> Result<TranslationUnit, FrontendError> {
     let tokens = lex(source)?;
     Parser::new(tokens).parse_unit()
@@ -121,6 +133,7 @@ enum TokenKind {
     RBrace,
     Semicolon,
     Equals,
+    Star,
     Newline,
     Eof,
 }
@@ -259,6 +272,10 @@ impl<'a> Lexer<'a> {
             '=' => {
                 self.bump_char();
                 TokenKind::Equals
+            }
+            '*' => {
+                self.bump_char();
+                TokenKind::Star
             }
             '0'..='9' | '.' => return self.lex_number(start),
             'A'..='Z' | 'a'..='z' | '_' => return Ok(self.lex_ident(start)),
@@ -538,6 +555,27 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, FrontendError> {
+        let lhs = self.parse_primary()?;
+        if !matches!(self.peek().kind, TokenKind::Star) {
+            return Ok(lhs);
+        }
+        self.bump();
+        let rhs = self.parse_primary()?;
+        if matches!(self.peek().kind, TokenKind::Star) {
+            return Err(self.error("only one multiplication is in this subset"));
+        }
+        let span = SourceSpan {
+            start: expr_start(&lhs),
+            end: expr_end(&rhs),
+        };
+        Ok(Expr::Mul {
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+            span,
+        })
+    }
+
+    fn parse_primary(&mut self) -> Result<Expr, FrontendError> {
         let token = self.peek().clone();
         match token.kind {
             TokenKind::Float(value) => {
@@ -651,9 +689,22 @@ fn token_kind_eq(left: &TokenKind, right: &TokenKind) -> bool {
             | (TokenKind::RBrace, TokenKind::RBrace)
             | (TokenKind::Semicolon, TokenKind::Semicolon)
             | (TokenKind::Equals, TokenKind::Equals)
+            | (TokenKind::Star, TokenKind::Star)
             | (TokenKind::Newline, TokenKind::Newline)
             | (TokenKind::Eof, TokenKind::Eof)
     )
+}
+
+fn expr_start(expr: &Expr) -> usize {
+    match expr {
+        Expr::Float { span, .. } | Expr::Name { span, .. } | Expr::Mul { span, .. } => span.start,
+    }
+}
+
+fn expr_end(expr: &Expr) -> usize {
+    match expr {
+        Expr::Float { span, .. } | Expr::Name { span, .. } | Expr::Mul { span, .. } => span.end,
+    }
 }
 
 fn check_unique_names(
@@ -737,5 +788,21 @@ mod tests {
         assert!(error.message.contains("es"));
         let error = parse_essl_subset("void main() {}\n").expect_err("missing version");
         assert!(error.message.contains("#version 300 es"));
+    }
+
+    #[test]
+    fn one_multiplication_keeps_a_source_span() {
+        let source = "#version 300 es\nvoid main() { float x = 2.0 * 3.0; }\n";
+        let unit = parse_essl_subset(source).expect("mul");
+        let Statement::Declare { value, .. } = &unit.functions[0].body[0] else {
+            panic!("declaration");
+        };
+        let Expr::Mul { span, .. } = value else {
+            panic!("multiplication");
+        };
+        assert_eq!(span.slice(source), Some("2.0 * 3.0"));
+        let chained = "#version 300 es\nvoid main() { float x = 2.0 * 3.0 * 4.0; }\n";
+        let error = parse_essl_subset(chained).expect_err("two muls");
+        assert!(error.message.contains("one multiplication"));
     }
 }
