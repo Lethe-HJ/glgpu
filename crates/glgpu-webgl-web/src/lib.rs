@@ -19,7 +19,7 @@ mod app {
 
     use super::editor::{
         self, DEMO_ESSL, MAX_ESSL_BYTES, PREVIEW_HEIGHT, PREVIEW_WIDTH, SAVED_ESSL_KEY,
-        format_tracked_pixel, highlight_essl, line_numbers_html, utf8_span_to_utf16_range,
+        format_tracked_pixel, highlight_overlay_html, line_numbers_html, utf8_span_to_utf16_range,
     };
     use glgpu_webgl::{LearningContext, P0_MILESTONE_CLEAR, WebGl2LearningTrack};
     use wasm_bindgen::JsCast;
@@ -117,7 +117,8 @@ mod app {
 
         fn refresh_editor(&self) {
             let source = self.editor.value();
-            self.highlight.set_inner_html(&highlight_essl(&source));
+            self.highlight
+                .set_inner_html(&highlight_overlay_html(&source));
             self.line_numbers
                 .set_inner_html(&line_numbers_html(&source, None));
             self.editor.set_attribute("aria-invalid", "false").ok();
@@ -145,7 +146,8 @@ mod app {
             self.editor.set_attribute("aria-invalid", "false")?;
             self.line_numbers
                 .set_inner_html(&line_numbers_html(source, None));
-            self.highlight.set_inner_html(&highlight_essl(source));
+            self.highlight
+                .set_inner_html(&highlight_overlay_html(source));
             self.compile_status
                 .set_class_name("compile-status status-ok");
             self.compile_status.set_text_content(Some(if ran {
@@ -185,7 +187,8 @@ mod app {
             let error_line = location.as_ref().map(|location| location.line);
             self.line_numbers
                 .set_inner_html(&line_numbers_html(source, error_line));
-            self.highlight.set_inner_html(&highlight_essl(source));
+            self.highlight
+                .set_inner_html(&highlight_overlay_html(source));
             self.compile_status
                 .set_class_name("compile-status status-error");
             self.compile_status.set_text_content(Some("编译失败"));
@@ -211,7 +214,8 @@ mod app {
         fn show_run_error(&self, source: &str, message: &str) {
             self.line_numbers
                 .set_inner_html(&line_numbers_html(source, None));
-            self.highlight.set_inner_html(&highlight_essl(source));
+            self.highlight
+                .set_inner_html(&highlight_overlay_html(source));
             self.compile_status
                 .set_class_name("compile-status status-error");
             self.compile_status.set_text_content(Some("运行失败"));
@@ -382,7 +386,7 @@ mod app {
         let editor_surface = element(&document, "div", "editor-surface")?;
         let highlight = element(&document, "pre", "syntax-highlight")?;
         highlight.set_attribute("aria-hidden", "true")?;
-        highlight.set_inner_html(&highlight_essl(&initial_source));
+        highlight.set_inner_html(&highlight_overlay_html(&initial_source));
         let editor: HtmlTextAreaElement = document.create_element("textarea")?.dyn_into()?;
         editor.set_class_name("source-editor");
         editor.set_value(&initial_source);

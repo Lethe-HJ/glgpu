@@ -100,6 +100,17 @@ pub struct CompileSuccess {
     pub functions: Vec<String>,
 }
 
+/// HTML for the highlight `<pre>`.
+///
+/// A textarea paints a line after a trailing newline. A `<pre>` does not, so
+/// the overlay would be one line shorter and could not scroll with the caret.
+/// The extra newline is only for that line box.
+pub fn highlight_overlay_html(source: &str) -> String {
+    let mut html = highlight_essl(source);
+    html.push('\n');
+    html
+}
+
 pub fn highlight_essl(source: &str) -> String {
     let mut output = String::with_capacity(source.len() + source.len() / 2);
     let bytes = source.as_bytes();
@@ -415,6 +426,19 @@ mod tests {
         assert_eq!(SAVED_ESSL_KEY, "glgpu.essl.editor.v1");
         assert!(DEMO_ESSL.len() <= MAX_ESSL_BYTES);
         assert!(!SAVED_ESSL_KEY.contains("wgsl"));
+    }
+
+    #[test]
+    fn overlay_html_adds_the_line_box_a_textarea_keeps_for_a_final_newline() {
+        for source in ["void main() {}", "void main() {}\n", "a\nb\n", ""] {
+            let html = highlight_overlay_html(source);
+            assert!(html.ends_with('\n'), "{source:?}");
+            assert_eq!(
+                html.matches('\n').count(),
+                source.matches('\n').count() + 1,
+                "{source:?}"
+            );
+        }
     }
 
     #[test]
