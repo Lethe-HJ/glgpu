@@ -93,6 +93,17 @@ mod editor_support {
         "vec4u",
     ];
 
+    /// HTML for the highlight `<pre>`.
+    ///
+    /// A textarea paints a line after a trailing newline. A `<pre>` does not,
+    /// so without one extra newline the overlay is one line short and cannot
+    /// scroll with the caret.
+    pub fn highlight_overlay_html(source: &str) -> String {
+        let mut html = highlight_wgsl(source);
+        html.push('\n');
+        html
+    }
+
     pub fn highlight_wgsl(source: &str) -> String {
         let mut output = String::with_capacity(source.len() + source.len() / 2);
         let bytes = source.as_bytes();
@@ -375,7 +386,7 @@ mod app {
     use std::rc::Rc;
 
     use super::editor_support::{
-        TrianglePreviewInputs, highlight_wgsl, line_numbers_html, triangle_preview_inputs,
+        TrianglePreviewInputs, highlight_overlay_html, line_numbers_html, triangle_preview_inputs,
         utf8_span_to_utf16_range,
     };
     use glgpu_canvas2d::present_rgba8;
@@ -511,7 +522,8 @@ mod app {
 
         fn refresh_editor(&self) {
             let source = self.editor.value();
-            self.highlight.set_inner_html(&highlight_wgsl(&source));
+            self.highlight
+                .set_inner_html(&highlight_overlay_html(&source));
             self.line_numbers
                 .set_inner_html(&line_numbers_html(&source, None));
             self.editor.set_attribute("aria-invalid", "false").ok();
@@ -833,7 +845,7 @@ mod app {
         let editor_surface = element(&document, "div", "editor-surface")?;
         let highlight = element(&document, "pre", "syntax-highlight")?;
         highlight.set_attribute("aria-hidden", "true")?;
-        highlight.set_inner_html(&highlight_wgsl(&initial_source));
+        highlight.set_inner_html(&highlight_overlay_html(&initial_source));
         let editor: HtmlTextAreaElement = document.create_element("textarea")?.dyn_into()?;
         editor.set_class_name("source-editor");
         editor.set_value(&initial_source);
@@ -1237,8 +1249,22 @@ pub use wasm_bindgen_rayon::init_thread_pool;
 #[cfg(test)]
 mod tests {
     use super::editor_support::{
-        highlight_wgsl, line_numbers_html, triangle_preview_inputs, utf8_span_to_utf16_range,
+        highlight_overlay_html, highlight_wgsl, line_numbers_html, triangle_preview_inputs,
+        utf8_span_to_utf16_range,
     };
+
+    #[test]
+    fn overlay_html_adds_the_line_box_a_textarea_keeps_for_a_final_newline() {
+        for source in ["fn main() {}", "fn main() {}\n", "a\nb\n", ""] {
+            let html = highlight_overlay_html(source);
+            assert!(html.ends_with('\n'), "{source:?}");
+            assert_eq!(
+                html.matches('\n').count(),
+                source.matches('\n').count() + 1,
+                "{source:?}"
+            );
+        }
+    }
 
     #[test]
     fn highlighter_marks_wgsl_tokens_and_escapes_source() {
