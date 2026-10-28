@@ -11,6 +11,27 @@
 
 mod compare_frame;
 
+/// What 「追踪中心像素」 may do for the current compare slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(any(test, target_arch = "wasm32")), allow(dead_code))]
+enum CenterTrace {
+    /// Native mode: leave the toggle and the visible frame alone.
+    Ignore,
+    /// Editor preview is already the 720×480 CPU frame.
+    EditorPreview,
+    /// Fixed compare scene: read the visible canvas, not the editor framebuffer.
+    VisibleCanvas,
+}
+
+#[cfg_attr(not(any(test, target_arch = "wasm32")), allow(dead_code))]
+fn center_trace_for(mode: Option<&str>) -> CenterTrace {
+    match mode {
+        Some("native") => CenterTrace::Ignore,
+        Some("editor") => CenterTrace::EditorPreview,
+        _ => CenterTrace::VisibleCanvas,
+    }
+}
+
 #[cfg(any(target_arch = "wasm32", test))]
 mod editor;
 
@@ -41,6 +62,7 @@ mod app {
         run_button: HtmlButtonElement,
         reference_button: HtmlButtonElement,
         native_button: HtmlButtonElement,
+        center_trace: HtmlButtonElement,
         metrics: HtmlElement,
         pixel_history: HtmlElement,
         editor: HtmlTextAreaElement,
@@ -123,7 +145,45 @@ mod app {
             self.editor.set_read_only(native);
             self.compile_button.set_disabled(native);
             self.run_button.set_disabled(native);
+            self.center_trace.set_disabled(native);
             Ok(())
+        }
+
+        fn compare_mode(&self) -> Option<String> {
+            self.compare_slot.get_attribute("data-compare-state")
+        }
+
+        fn show_visible_center(&self) -> Result<(), JsValue> {
+            let canvas = self
+                .compare_slot
+                .query_selector("canvas")?
+                .ok_or_else(|| JsValue::from_str("compare canvas is missing"))?
+                .dyn_into::<HtmlCanvasElement>()?;
+            let width = canvas.width();
+            let height = canvas.height();
+            if width == 0 || height == 0 {
+                return Err(JsValue::from_str("compare canvas has no pixels"));
+            }
+            let x = width / 2;
+            let y = height / 2;
+            let (red, green, blue, alpha) = self.read_canvas_pixel(x, y)?;
+            self.pixel_history.set_text_content(Some(&format!(
+                "pixel ({x}, {y})\nrgba({red}, {green}, {blue}, {alpha})\n固定对照场景没有 primitive history"
+            )));
+            Ok(())
+        }
+
+        fn trace_center(&mut self) -> Result<(), JsValue> {
+            match super::center_trace_for(self.compare_mode().as_deref()) {
+                super::CenterTrace::Ignore => Ok(()),
+                super::CenterTrace::EditorPreview => {
+                    self.selected_x = PREVIEW_WIDTH / 2;
+                    self.selected_y = PREVIEW_HEIGHT / 2;
+                    self.show_selected_pixel();
+                    Ok(())
+                }
+                super::CenterTrace::VisibleCanvas => self.show_visible_center(),
+            }
         }
 
         fn show_reference_compare(&self) -> Result<(), JsValue> {
@@ -598,6 +658,7 @@ mod app {
             run_button: run_button.clone(),
             reference_button: reference_button.clone(),
             native_button: native_button.clone(),
+            center_trace: reset_trace.clone(),
             metrics,
             pixel_history,
             editor: editor.clone(),
@@ -772,10 +833,9 @@ mod app {
 
         let reset_trace_state = Rc::clone(&state);
         let reset_trace_click = Closure::<dyn FnMut()>::new(move || {
-            let mut state = reset_trace_state.borrow_mut();
-            state.selected_x = PREVIEW_WIDTH / 2;
-            state.selected_y = PREVIEW_HEIGHT / 2;
-            state.show_selected_pixel();
+            if let Err(error) = reset_trace_state.borrow_mut().trace_center() {
+                web_sys::console::error_1(&error);
+            }
         });
         reset_trace.add_event_listener_with_callback(
             "click",
@@ -854,4 +914,20 @@ pub fn boot() -> Result<(), wasm_bindgen::JsValue> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn native_build_marker() -> &'static str {
     "glgpu-webgl-web is active only on wasm32"
+}
+
+#[cfg(test)]
+mod center_trace_tests {
+    use super::{CenterTrace, center_trace_for};
+
+    #[test]
+    fn native_center_trace_does_not_read_the_learning_framebuffer() {
+        assert_eq!(center_trace_for(Some("native")), CenterTrace::Ignore);
+        assert_eq!(center_trace_for(Some("editor")), CenterTrace::EditorPreview);
+        assert_eq!(
+            center_trace_for(Some("reference")),
+            CenterTrace::VisibleCanvas
+        );
+        assert_eq!(center_trace_for(None), CenterTrace::VisibleCanvas);
+    }
 }
