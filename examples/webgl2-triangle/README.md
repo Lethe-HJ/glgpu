@@ -6,4 +6,6 @@ Framebuffer 第 0 行仍是图像上方，用来和 WebGPU P0 三角形保持同
 
 [`float_local.essl`](float_local.essl) 仍是更小的解释器夹具，只覆盖 `load_const` 和 `move`。它不产生三角形。
 
+`web/webgl.html` 把 [`p0_vertex.essl`](p0_vertex.essl) 放进可编辑的调试页：编译当前子集，再用同一条 CPU 解释器路径画出三角形。标识保持 `NOT WEBGL CONFORMANT`。
+
 光照旋转立方体还没有做。ESSL 的 accept/reject 参照是 Khronos glslang 16.6.0，当前测试不调用它。说明见 [WebGL2 学习轨道](../../docs/webgl2-learning-track.zh-CN.md)。

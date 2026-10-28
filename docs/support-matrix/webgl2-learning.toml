@@ -7,8 +7,8 @@ implementation = "learning-slice"
 goal = "pure CPU from-scratch WebGL2-style stack for learning"
 backend = "cpu-from-scratch"
 separate_from_webgpu_crates = true
-presentation = "none; Canvas2D present is not wired"
-api_surface = "Rust-native learning slice inside glgpu-webgl only"
+presentation = "debug shell copies RGBA8 with Canvas 2D putImageData; LearningContext has no present method"
+api_surface = "Rust-native learning slice inside glgpu-webgl; debug page is crates/glgpu-webgl-web"
 product_phase = "P7a+ remains the production gate; this file does not move it"
 banner = "CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT"
 host_webgl = false
@@ -68,7 +68,7 @@ api = [
 
 [intentionally_different]
 api = [
-    "framebuffer row 0 is the top image row so the P0 picture matches the WebGPU demo; WebGL window y is bottom-left and storage_y = height - window_y. This storage order is transitional until present exists",
+    "framebuffer row 0 is the top image row so the P0 picture matches the WebGPU demo; WebGL window y is bottom-left and storage_y = height - window_y. The debug page copies this order with putImageData and does not flip y again",
     "coverage is this crate's sample-center barycentric test, not a bit-identical port of the WebGPU rasterizer",
     "clip Z is -w..w, so a triangle with negative clip Z still rasterizes here. There is no depth buffer",
     "the shader subset is scalar float only. Vertex outputs use v_clip_* and v_color_* because there is no vec4 or gl_Position",
@@ -79,6 +79,7 @@ api = [
 
 [notes]
 scope = "Learning slice inside glgpu-webgl. Partial rows are not WebGL entry points. drawArrays is not started."
+debug_page = "web/webgl.html reloads a separate Wasm package. It is not a WebGLRenderingContext and does not move explicit present, drawArrays, or the JavaScript facade out of not_started."
 essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00. glslang 16.6.0 is the accept/reject reference and is not invoked yet."
 coordinates = "Window space is bottom-left and clip Z is -w..w. Stored row 0 is still the top image row."
 debugger = "Instruction spans, per-step local snapshots, and per-step uniform/input/output values are the debugger hook. There is no pause control or UI."

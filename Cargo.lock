@@ -211,6 +211,17 @@ name = "glgpu-webgl"
 version = "0.1.0"
 
 [[package]]
+name = "glgpu-webgl-web"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "glgpu-webgl",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "glgpu-webgpu"
 version = "0.1.0"
 dependencies = [

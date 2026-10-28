@@ -4,8 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GLGPU WebGPU Debug Lab</title>
+    <link rel="stylesheet" href="./api-nav.css">
   </head>
   <body>
+    <header class="site-nav">
+      <div class="site-nav-inner">
+        <div class="site-nav-brand">GLGPU</div>
+        <nav class="api-switch" aria-label="图形栈">
+          <span aria-current="page">WebGPU</span>
+          <a href="./webgl.html">WebGL</a>
+        </nav>
+        <p class="site-nav-note">切换会重新加载页面</p>
+      </div>
+    </header>
     <main id="app">正在载入 GLGPU Rust/Wasm…</main>
     <!--
       相对 URL 同时覆盖本地 `/`（cargo xtask serve）和 GitHub Pages 项目站点 `/<repo>/`。

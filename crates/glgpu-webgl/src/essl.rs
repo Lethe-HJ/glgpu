@@ -18,6 +18,22 @@ impl SourceSpan {
     pub fn slice(self, source: &str) -> Option<&str> {
         source.get(self.start..self.end)
     }
+
+    /// 1-based line and character column of `start`.
+    ///
+    /// Columns count Unicode scalar values, matching the editor caret. A start
+    /// index inside a multibyte character moves back to that character.
+    pub fn line_column(self, source: &str) -> (u32, u32) {
+        let mut start = self.start.min(source.len());
+        while start > 0 && !source.is_char_boundary(start) {
+            start -= 1;
+        }
+        let prefix = &source[..start];
+        let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32 + 1;
+        let line_start = prefix.rfind('\n').map(|index| index + 1).unwrap_or(0);
+        let column = source[line_start..start].chars().count() as u32 + 1;
+        (line, column)
+    }
 }
 
 /// Lex or parse failure. `span` is the source map hook for later diagnostics.
@@ -781,6 +797,14 @@ mod tests {
     }
 
     #[test]
+    fn line_column_counts_unicode_scalars_on_the_source_line() {
+        let source = "a\n中x";
+        let span = SourceSpan { start: 5, end: 6 };
+
+        assert_eq!(span.line_column(source), (2, 2));
+    }
+
+    #[test]
     fn rejects_a_version_other_than_300_es() {
         let error = parse_essl_subset("#version 330\nvoid main() {}\n").expect_err("desktop glsl");
         assert!(error.message.contains("300"));
@@ -801,6 +825,11 @@ mod tests {
             panic!("multiplication");
         };
         assert_eq!(span.slice(source), Some("2.0 * 3.0"));
+        let (line, column) = span.line_column(source);
+        assert_eq!(line, 2);
+        let line_text = source.lines().nth(1).expect("source line");
+        let start = column as usize - 1;
+        assert_eq!(&line_text[start..start + 3], "2.0");
         let chained = "#version 300 es\nvoid main() { float x = 2.0 * 3.0 * 4.0; }\n";
         let error = parse_essl_subset(chained).expect_err("two muls");
         assert!(error.message.contains("one multiplication"));

@@ -1,6 +1,7 @@
 /target/
 /web/pkg/
 /web/pkg-mt/
+/web/pkg-webgl/
 /.idea/
 /.vscode/
 .DS_Store
