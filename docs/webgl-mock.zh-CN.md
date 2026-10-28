@@ -13,14 +13,14 @@
 
 ## 线程模型
 
-已决定，采用方案 C（两者都保留）。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade。这次只锁定方案，不实现这条管线。
+已决定（2026-10-28）：**不使用 OffscreenCanvas**。此前方案 C 里的 OffscreenCanvas blit 已撤销。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade。这次只锁定方案，不实现 Worker 后端。
 
-1. Wasm 里的 CPU 像素 framebuffer（RGBA8，适用时含 depth）是光栅结果、framebuffer hash、单元测试和像素调试的权威来源。
-2. 写入这份 CPU cache 之后，再把这些像素 blit/写入 Worker 里的 **OffscreenCanvas（离屏 canvas）**。这块 OffscreenCanvas 只是呈现和零拷贝导出面，不是权威像素存储。测试和 hash 不以从它回读为主路径。
-3. 主线程与 Worker 之间只使用 **SharedArrayBuffer**，或零拷贝转移（可转移 `ArrayBuffer`、`ImageBitmap`、OffscreenCanvas transfer，按场合选用）。像素载荷不用拷贝式 `postMessage`。
-4. 页面 Canvas 2D 只负责呈现。管线不直接画到可见的页面 canvas。
+1. 绘制缓冲只存在于 webgl-mock 后端（Worker + Wasm）。CPU 像素 framebuffer（RGBA8，适用时含 depth）是光栅结果、framebuffer hash、单元测试和像素调试的权威来源，对应原生 WebGL 的 drawing buffer。
+2. 呈现把这些像素用 **SharedArrayBuffer**，或零拷贝的可转移 `ArrayBuffer`，送到主线程。主线程用 Canvas 2D 呈现（`putImageData` / `ImageData`）。没有 OffscreenCanvas blit。
+3. 页面 canvas 只负责呈现。管线不把可见页面 canvas 当作 GL 绘制目标。
+4. 主线程与 Worker 的高效通信只使用 SharedArrayBuffer 或零拷贝转移。像素载荷不用拷贝式 `postMessage`。
 
-现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把像素直接交到页面 canvas。还没有 Web API façade，也没有 Worker OffscreenCanvas，更没有 SharedArrayBuffer 或零拷贝转移这条通道。这次不实现这条管线。
+现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把像素直接交到页面 canvas。还没有 Web API façade，也没有 Worker 后端。这次不实现这条管线。
 
 ## 这条栈做什么
 

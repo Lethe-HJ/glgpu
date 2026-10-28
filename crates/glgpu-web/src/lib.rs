@@ -4,12 +4,10 @@
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. The triangle on the page is a demo.
 //! Today the P0 subset runs in Wasm on the main owner thread and `putImageData`
 //! copies the frame onto the page canvas. Rayon workers, when the MT package is
-//! loaded, only run tile kernels. Scheme C keeps the CPU framebuffer
-//! authoritative and blits it into a Worker OffscreenCanvas for present and
-//! zero-copy export only. Page Canvas 2D only presents. The main thread would
-//! reach that Worker + Wasm backend through SharedArrayBuffer or a zero-copy
-//! transfer, not a copied `postMessage` of pixel payloads. This page does not
-//! implement that split yet.
+//! loaded, only run tile kernels. The target drawing buffer stays in the
+//! Worker plus Wasm backend. Present is SharedArrayBuffer or a zero-copy
+//! transferable ArrayBuffer to this main thread, then Canvas 2D. There is no
+//! OffscreenCanvas blit. This page does not implement that split yet.
 
 #![forbid(unsafe_code)]
 

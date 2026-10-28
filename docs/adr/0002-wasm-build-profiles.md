@@ -111,7 +111,7 @@ shared Wasm RGBA8 → ordinary Uint8ClampedArray → ImageData → Canvas bitmap
 - 不宣称 MT presentation 零拷贝；
 - benchmark 必须拆分 raster、staging copy 和 `putImageData`；
 - 后续应复用 staging/ImageData，评估 dirty rect，而不是假设更多 worker 一定提高整帧性能；
-- OffscreenCanvas 只能改变 owner 和 UI 卡顿，不能消除 shared→non-shared copy。
+- 呈现设计不使用 OffscreenCanvas。像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程，再 `putImageData`。`ImageData` 不能直接接收共享视图时，仍要 staging 到普通 ArrayBuffer。
 
 ## 后果
 

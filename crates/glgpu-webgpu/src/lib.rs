@@ -3,11 +3,11 @@
 //! This crate intentionally exposes [`CpuGpuSubset`] rather than pretending to
 //! be native WebGPU or a conformant browser `GPUAdapter`. The banner stays
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. Its queue is synchronous and bound to
-//! the creating owner thread. Scheme C keeps the CPU framebuffer authoritative
-//! and blits it into a Worker OffscreenCanvas for present and zero-copy export
-//! only. Page Canvas 2D only presents. The main-thread Web API façade reaches
-//! that Worker + Wasm backend through SharedArrayBuffer or a zero-copy transfer,
-//! not a copied `postMessage` of pixel payloads. That split is not this P0
+//! the creating owner thread. The target drawing buffer stays in the Worker +
+//! Wasm backend. Present is SharedArrayBuffer or a zero-copy transferable
+//! ArrayBuffer to the main thread, then Canvas 2D. There is no OffscreenCanvas
+//! blit. The main thread does not receive pixel payloads by a copied
+//! `postMessage`. That split is not this P0
 //! queue. JavaScript/WebIDL objects, promises, error
 //! scopes, and standard asynchronous queue semantics are explicitly outside
 //! this P0 contract.

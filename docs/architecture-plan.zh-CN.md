@@ -118,7 +118,7 @@
 
 - WebGPU：实现启动时锁定一个有日期的 [W3C WebGPU Candidate Recommendation Draft](https://www.w3.org/TR/webgpu/)。
 - WGSL：与上述 WebGPU 基线匹配的 [W3C WGSL Draft](https://www.w3.org/TR/WGSL/)。
-- Canvas/OffscreenCanvas/ImageData：WHATWG HTML Living Standard 的固定 commit。
+- Canvas/ImageData：WHATWG HTML Living Standard 的固定 commit。呈现不使用 OffscreenCanvas。
 - WebAssembly threads 与绑定：固定 Rust nightly、`wasm-bindgen`、`wasm-bindgen-rayon` 和 Naga 版本。
 - 后续 WebGL 1：Khronos WebGL 1.0.3；同时追踪[最新 WebGL 1 编辑草案](https://registry.khronos.org/webgl/specs/latest/1.0/)。
 - 后续 WebGL 2：Khronos WebGL 2.0.0；同时追踪[最新 WebGL 2 编辑草案](https://registry.khronos.org/webgl/specs/latest/2.0/)。
@@ -207,7 +207,7 @@ glgpu/
     glgpu-webgl/              # webgl-mock：CPU WebGL2 子集；不依赖 webgpu-mock crate（ADR 0003，产品 gate 仍是 P7b）
     glgpu-webgl-web/          # WebGL 调试页 Wasm 壳；只依赖 glgpu-webgl
     glgpu-trace/              # capture、replay、state diff、pixel history
-    glgpu-canvas2d/           # ImageData/OffscreenCanvas 呈现
+    glgpu-canvas2d/           # ImageData 呈现；不使用 OffscreenCanvas
     glgpu-web/                # wasm-bindgen、web-sys、Rust DOM/UI
   apps/
     debugger-web/             # 调试器页面入口
@@ -270,7 +270,7 @@ let device = gpu.request_device(device_desc).await?;
 4. `cts-harness-injection`：仅用于固定测试环境，把 provider 和 Canvas factory 注入 harness；测试文件保持不改，但注入差异必须公开。
 5. `navigator.gpu-monkey-patch`：实验功能，仅在选定框架和浏览器矩阵中声明支持，不作为 P6 的必要出口。
 
-P5 的 JS Adapter 合同选择 **main-thread wrapper → dedicated owner worker proxy**：应用仍可在主线程同步创建轻量 handle 和记录 encoder，wrapper 把冻结后的 descriptors/packets 发送给 worker；worker 拥有资源、Rayon kernels 和 transferred `OffscreenCanvas` 2D context，再把 completion/error 发回主线程。迁移一个普通样例时需要替换两个显式注入点：`gpu provider` 与 `canvas-context factory`；只替换 `navigator.gpu` 不足以处理 `canvas.getContext("webgpu")` 和 2D context 所有权。P0 必须以一个端到端 mock 验证 `main wrapper → worker → Rayon → Canvas → Promise`，P5 再实现完整 proxy。
+P5 的 JS Adapter 合同选择 **main-thread wrapper → dedicated owner worker proxy**：应用仍可在主线程同步创建轻量 handle 和记录 encoder，wrapper 把冻结后的 descriptors/packets 发送给 worker；worker 拥有资源、Rayon kernels 和 CPU framebuffer。像素经 SharedArrayBuffer 或可转移 ArrayBuffer 送到主线程，由主线程 Canvas 2D `putImageData` 呈现。设计不使用 OffscreenCanvas。迁移一个普通样例时需要替换两个显式注入点：`gpu provider` 与 `canvas-context factory`；只替换 `navigator.gpu` 不足以处理 `canvas.getContext("webgpu")` 和 2D context 所有权。P0 必须以一个端到端 mock 验证 `main wrapper → worker → Rayon → 主线程 Canvas 2D → Promise`，P5 再实现完整 proxy。
 
 ### 7.3 “Rust 控制页面”的工程边界
 
@@ -388,7 +388,7 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
 
-并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。方案 C 已决定：CPU framebuffer 是权威像素存储，写入后再 blit 到 Worker OffscreenCanvas，后者只做呈现和零拷贝导出。页面 Canvas 2D 只呈现。主线程与 Worker 只用 SharedArrayBuffer 或零拷贝转移，像素载荷不用拷贝式 postMessage。这次不实现这条管线。它还没有本节的状态机，也不把 P7a 提前成产品交付。
+并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。2026-10-28 已决定不使用 OffscreenCanvas：CPU framebuffer 是唯一绘制缓冲；像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程，再由 Canvas 2D 呈现。页面 canvas 只呈现。像素载荷不用拷贝式 postMessage。这次不实现 Worker 后端。它还没有本节的状态机，也不把 P7a 提前成产品交付。
 
 ### 9.1 状态与对象
 
@@ -697,7 +697,7 @@ P0 queue spike 至少覆盖：1-worker 无死锁、连续多个 submit、`queue.
 **模式 B：worker-hosted owner 模式（WebGPU 主线，P0 验证、P3 交付）**
 
 - 主线程 Rust/Wasm 只负责调试 UI。
-- 资源与渲染 owner 在 Dedicated Worker，Canvas transfer 为 OffscreenCanvas 2D；Rust-native 应用可以同驻 worker，P5 的 JS 应用也可以留在主线程并通过 wrapper/packet proxy 调用 owner。
+- 资源与渲染 owner 在 Dedicated Worker，绘制缓冲是 CPU framebuffer。像素经 SharedArrayBuffer 或可转移 ArrayBuffer 送到主线程 Canvas 2D。不使用 OffscreenCanvas。Rust-native 应用可以同驻 worker，P5 的 JS 应用也可以留在主线程并通过 wrapper/packet proxy 调用 owner。
 - owner 再用 Rayon worker pool 并行 tile。
 - 后续 WebGL 的同步调用可发生在应用 worker 内而不阻塞页面 UI；这只是 P7b+ 设计约束。
 - “worker 内再初始化 wasm-bindgen-rayon pool”必须在 P0 做跨浏览器 spike，验证后才能承诺。
@@ -730,7 +730,7 @@ P0 queue spike 至少覆盖：1-worker 无死锁、连续多个 submit、`queue.
 - 默认一次 full-frame `putImageData`；只有 benchmark 证明更快时才使用少量 dirty rectangles。
 - 跟踪 dirty tiles，合并成少量矩形或一个 bounding rectangle。
 - 调试器允许降低内部渲染分辨率并用 CSS 显示缩放。
-- OffscreenCanvas 只改变 Canvas owner 和 UI 卡顿情况，不消除 shared → ImageData 复制。
+- 呈现不使用 OffscreenCanvas。像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程，再 `putImageData`。`ImageData` 不能直接吃共享视图时，仍要有一次到普通 ArrayBuffer 的 staging。
 
 benchmark 分别统计：format/present conversion、shared→ImageData copy、`putImageData` 三段；P0 还要构造“renderer 明显快于 presenter”的压力场景，验证不会撕裂或同时读写同一 buffer。
 
@@ -896,7 +896,7 @@ Cross-Origin-Embedder-Policy: require-corp
 生产部署还需检查所有跨源图片、字体、Wasm、worker 和 source map 的 CORS/CORP 策略。页面启动时显示：
 
 - `crossOriginIsolated`；
-- threads/SharedArrayBuffer/OffscreenCanvas/SIMD 可用性；
+- threads/SharedArrayBuffer/SIMD 可用性；不把 OffscreenCanvas 列入呈现设计；
 - 选中的 mt/st build；
 - worker 数与 resource budget。
 
@@ -970,9 +970,9 @@ P6 的三个内部 gate 不允许用一个很小的 CTS query 集形式通过：
 - 测量 720p/1080p shared framebuffer → ImageData → putImageData；
 - 测 dirty rectangle、三缓冲/ACK、不同 tile size；
 - 验证 Chrome/Firefox MT；Safari 只要求 ST smoke/fallback，MT 结果单独记录；
-- 测 main owner 与 OffscreenCanvas worker owner；
+- 测 main owner 与 Worker 后端；呈现是 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程 Canvas 2D，不测 OffscreenCanvas；
 - 用 mock kernels 验证 owner queue dispatcher：1-worker、连续 submit、hidden tab、取消与 teardown；
-- 完成一次 throwaway 端到端链路：main wrapper 记录 handle/packet → owner worker → Rayon kernel → OffscreenCanvas 2D → completion/error Promise 返回主线程。
+- 完成一次 throwaway 端到端链路：main wrapper 记录 handle/packet → owner worker → Rayon kernel → CPU framebuffer → 主线程 Canvas 2D `putImageData`。不经过 OffscreenCanvas。
 
 ### 第 3 周：shader 与 API spike
 
@@ -1131,7 +1131,7 @@ P0 同时提交一份不阻断 WebGPU 的 WebGL 兼容性记录和上述冻结 f
 - [Naga shader translator](https://github.com/gfx-rs/wgpu/tree/trunk/naga)
 - [wasm-bindgen-rayon maintained repository](https://github.com/RReverser/wasm-bindgen-rayon)
 - [wasm-bindgen parallel raytracing/thread notes](https://rustwasm.github.io/docs/wasm-bindgen/examples/raytrace.html)
-- [WHATWG Canvas and OffscreenCanvas](https://html.spec.whatwg.org/multipage/canvas.html)
+- [WHATWG Canvas](https://html.spec.whatwg.org/multipage/canvas.html)
 - [WHATWG ImageData](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html)
 - [Web IDL AllowShared rules](https://webidl.spec.whatwg.org/#AllowShared)
 - [MDN SharedArrayBuffer security requirements](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer)
@@ -1152,4 +1152,4 @@ compute/barrier 范围）和量化 Q6（参考机器、分辨率、场景与帧�
 建议下一迭代先实现项目自有 shader IR/字节码与 WGSL lowering，让 demo 顶点/片元 shader 真正在 CPU
 执行；随后加入 buffer、bind group、render pipeline、texture/sampler 和 capture schema。owner-worker 与异步
 queue spike 应作为独立 gate，不能把当前同步 `ImmediateMainOwnerQueue` 宣称成标准 WebGPU queue。WebGL
-的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm，并把像素直接交给页面 canvas。方案 C 已决定：CPU framebuffer 是权威来源，写入后再 blit 到 Worker OffscreenCanvas，再经 Canvas 2D present。这次不实现这条管线。
+的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm，并把像素直接交给页面 canvas。2026-10-28 已决定不使用 OffscreenCanvas：CPU framebuffer 是权威来源，像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程 Canvas 2D。这次不实现 Worker 后端。

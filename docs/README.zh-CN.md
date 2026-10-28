@@ -61,7 +61,7 @@
 | Compute execution | 未实现 | 范围仍需冻结 |
 | Standard `navigator.gpu` façade | 未实现 | 必须等待 capability/CTS gate |
 | WebGL/ESSL 产品实现 | 延后 | P7a+；ADR 0001 仍然有效 |
-| webgl-mock | CPU 子集 | 模拟 WebGL：clear、WebGL clip/左下窗口、shader 三角形 demo、ESSL 子集、bytecode 和解释器。方案 C 已决定：CPU framebuffer 是权威像素存储，写入后再 blit 到 Worker OffscreenCanvas，后者只做呈现和零拷贝导出。`/webgl.html` 当前仍用主线程 `putImageData` 直接交到页面 canvas。禁止原生 WebGL/WebGPU。见 ADR 0003 |
+| webgl-mock | CPU 子集 | 模拟 WebGL：clear、WebGL clip/左下窗口、shader 三角形 demo、ESSL 子集、bytecode 和解释器。2026-10-28 已决定不使用 OffscreenCanvas：CPU framebuffer 是唯一绘制缓冲；像素经 SharedArrayBuffer 或可转移 ArrayBuffer 到主线程 Canvas 2D。`/webgl.html` 当前仍用主线程 `putImageData` 直接交到页面 canvas。禁止原生 WebGL/WebGPU。见 ADR 0003 |
 
 ## 信息优先级
 
@@ -92,7 +92,7 @@
 - **webgl-mock / 模拟 WebGL**：CPU 上的 WebGL2 风格实现。入口 `WebGlMock`，三角形页面是 demo，上下文是 `DemoContext`。标识 `webgl-mock — NOT WEBGL CONFORMANT`。
 - **webgpu-mock / 模拟 WebGPU**：CPU 上的 WebGPU 风格实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
 - **原生 WebGL / 原生 WebGPU**：浏览器内建 API。本仓库不把它们当作渲染后端。
-- **方案 C（已决定，两者都保留）**：Wasm CPU framebuffer（RGBA8，适用时含 depth）是光栅结果、hash、单元测试和像素调试的权威来源。写入后再 blit 到 Worker OffscreenCanvas（离屏 canvas）；它只做呈现和零拷贝导出，不是权威像素存储，测试也不以回读它为主路径。主线程与 Worker 只用 SharedArrayBuffer 或零拷贝转移（可转移 ArrayBuffer、ImageBitmap、OffscreenCanvas transfer）。页面 Canvas 2D 只呈现。demo 页当前仍是主线程单线程 Wasm，这次不实现这条管线。
+- **呈现（2026-10-28 已决定）**：不使用 OffscreenCanvas。绘制缓冲只在 Worker + Wasm 后端；CPU framebuffer（RGBA8，适用时含 depth）是光栅结果、hash、单元测试和像素调试的权威来源。呈现是 SharedArrayBuffer 或零拷贝的可转移 ArrayBuffer 到主线程，再由 Canvas 2D `putImageData` / `ImageData` 呈现。页面 canvas 只呈现。像素载荷不用拷贝式 postMessage。demo 页当前仍是主线程单线程 Wasm，这次不实现 Worker 后端。
 - **P0 垂直切片**：当前可运行的 CPU triangle → framebuffer → Canvas2D 与最小像素追踪，不代表完整 P0 风险验证已经结束。
 - **ST**：stable toolchain 构建的非共享内存单线程 Wasm 包。
 - **MT**：固定 nightly、重建标准库、SharedArrayBuffer 和 `wasm-bindgen-rayon` 的多线程 Wasm 包。
