@@ -9,6 +9,8 @@
 
 #![forbid(unsafe_code)]
 
+mod compare_frame;
+
 #[cfg(any(target_arch = "wasm32", test))]
 mod editor;
 
@@ -705,6 +707,18 @@ mod app {
     fn append(parent: &Element, child: &Element) -> Result<(), JsValue> {
         parent.append_child(child).map(|_| ())
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn compare_frame_rgba8(
+    width: u32,
+    height: u32,
+    clear: &[u8],
+    vertices: &[f32],
+) -> Result<Vec<u8>, wasm_bindgen::JsValue> {
+    compare_frame::compare_frame_rgba8(width, height, clear, vertices)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
 }
 
 #[cfg(target_arch = "wasm32")]
