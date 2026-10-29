@@ -13,7 +13,24 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 - **webgpu-mock / 模拟 WebGPU**：WebGPU 主线的 CPU 实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
 - **原生 WebGL / 原生 WebGPU**：浏览器内建 API。本栈不调用它们。
 
+## 现有实现与未来设计
+
+下表只写仓库里核对过的代码，不把决定写成已经落地。
+
+| 设计点 | 状态 | 目前代码 |
+| --- | --- | --- |
+| 产品名 webgl-mock / webgpu-mock；三角形页是 demo | 现有 | `WebGlMock`、`DemoContext`，标识 `webgl-mock — NOT WEBGL CONFORMANT`。webgpu 标识仍是 `CpuGpuSubset — NOT WEBGPU CONFORMANT` |
+| RGBA8 clear、WebGL clip、ESSL→bytecode→CPU 解释器、shader 三角形 | 现有 | `DemoContext` 持有 `Vec<Rgba8>`，`clear` 与 `draw_shader_triangle` 在 `glgpu-webgl`。没有 `drawArrays`，也没有 present 方法 |
+| demo 页在主线程把像素贴到页面 canvas | 现有 | `glgpu-webgl-web` 在主线程调用 `get_context("2d")` 和 `put_image_data`。像素来自 `to_rgba8_bytes()` |
+| 不调用原生 WebGL / 原生 WebGPU，也不使用 OffscreenCanvas | 现有 | 页面只拿 Canvas 2D。代码里没有 OffscreenCanvas，也没有 `getContext("webgl")` |
+| Worker + Wasm 后端；主线程只做 Web API façade | 未来 | 这是未来的设计，目前还未实现。目前 webgl 页的 Wasm 跑在主线程 |
+| SharedArrayBuffer 双缓冲 + Atomics；back 槽是逻辑绘制缓冲 | 未来 | 这是未来的设计，目前还未实现。目前绘制缓冲是 `DemoContext` 里的 `Vec<Rgba8>`，不是 SAB 的槽 |
+| 三缓冲不是默认 | 未来约束 | 目前既没有双槽，也没有第三块呈现缓冲 |
+| 实验性、亲自实现以抓住核心 | 原则 | 写在文档里，不是某个代码开关 |
+
 ## 线程模型
+
+下面 1–5 是未来的设计，目前还未实现。目前是用主线程上的 `DemoContext`（`Vec<Rgba8>`）光栅，再 `to_rgba8_bytes` 后用 Canvas 2D `putImageData` 交到页面 canvas。
 
 已决定（2026-10-28）：呈现使用一块 **SharedArrayBuffer 双缓冲**。不使用 OffscreenCanvas。此前方案 C 的 OffscreenCanvas blit 已撤销。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade。这次只锁定方案，不实现 Worker 后端。
 
@@ -23,7 +40,7 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 4. 主线程用 Canvas 2D 呈现 front 槽（`putImageData` / `ImageData`）。`ImageData` 不能直接接收共享视图时，只从当前 front 槽复制，这不是另一份逻辑绘制缓冲。页面 canvas 只负责呈现。管线不把可见页面 canvas 当作 GL 绘制目标。没有 OffscreenCanvas blit。
 5. 高效通信的主路径是这块双缓冲 SharedArrayBuffer 和 Atomics。若以后需要一份副本快照，可以用零拷贝转移；那不是主路径。像素载荷不用拷贝式 `postMessage`。
 
-现状：`/webgl.html` 仍是主线程上的单线程 Wasm。它在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把像素直接交到页面 canvas。还没有 Web API façade，也没有这块双缓冲 SharedArrayBuffer。这次不实现这条管线。
+这是未来的设计，目前还未实现。目前 `/webgl.html` 是主线程上的单线程 Wasm：在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把 `Vec<u8>` 直接交到页面 canvas。还没有 Web API façade，也没有这块双缓冲 SharedArrayBuffer。
 
 ## 这条栈做什么
 

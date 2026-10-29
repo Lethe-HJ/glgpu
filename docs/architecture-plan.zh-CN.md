@@ -1,6 +1,22 @@
 # GLGPU：WebGPU 优先的 CPU 调试模拟器规划（WebGL 后续）
 
-GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。下文的 webgl-mock / webgpu-mock 是 CPU 模拟，原生 WebGL / 原生 WebGPU 是浏览器内建 API。这个宗旨不改变已经决定的呈现路径：SharedArrayBuffer 双缓冲，逻辑绘制缓冲是可写的 back 槽，不使用 OffscreenCanvas。
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。这是文档里的宗旨，不是代码开关。下文的 webgl-mock / webgpu-mock 是 CPU 模拟，原生 WebGL / 原生 WebGPU 是浏览器内建 API。
+
+## 现有实现与未来设计
+
+后文阶段规划里，凡是「当前实现快照」没有列出的能力，都是未来的设计，目前还未实现。和呈现、线程直接相关的决定如下。
+
+| 设计点 | 状态 | 目前代码 |
+| --- | --- | --- |
+| webgpu-mock P0：CPU 三角形、depth、同步 queue、Canvas 2D | 现有 | `CpuGpuSubset`、`ImmediateMainOwnerQueue`、`glgpu-canvas2d` 的 `put_image_data`。标识 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。WGSL 只校验，不执行 |
+| webgpu MT 的 Rayon tile | 现有，范围有限 | `wasm-bindgen-rayon` 的 SharedArrayBuffer 是 Wasm 线性内存。worker 只跑 tile kernel。这不是 front/back 两槽呈现 |
+| webgl-mock：clear、clip、ESSL→bytecode、shader 三角形 demo | 现有 | `DemoContext` 的 `Vec<Rgba8>` 与 `draw_shader_triangle`。主线程 `put_image_data` |
+| 不用 OffscreenCanvas；页面 canvas 只呈现 | 现有 | 两条 demo 都拿 Canvas 2D，不把页面 canvas 当原生 GL/GPU drawing buffer |
+| Worker + Wasm 后端与主线程 Web API façade | 未来 | 这是未来的设计，目前还未实现。目前两条 Wasm 都在主线程跑绘制 |
+| SharedArrayBuffer 双缓冲 + Atomics；back 槽是逻辑绘制缓冲 | 未来 | 这是未来的设计，目前还未实现。目前 webgl 像素在 `Vec<Rgba8>`；webgpu 像素在 `glgpu-core` 的 framebuffer |
+| 三缓冲不是默认 | 未来约束 | 目前没有双槽，也没有第三块呈现缓冲 |
+
+下文第 14.2 节里 2026-10-28 的双缓冲条文同样是未来的设计。
 
 > 状态：执行基线 v0.4（WebGPU-first；P0 垂直切片已落地，完整 P0 gate 仍在进行）  
 > 日期：2026-08-22  
@@ -390,7 +406,7 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
 
-并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。2026-10-28 已决定：主路径是 SharedArrayBuffer 双缓冲加 Atomics。逻辑绘制缓冲是可写的 back 槽。不使用 OffscreenCanvas，三缓冲不是默认。页面 canvas 只呈现。像素载荷不用拷贝式 postMessage。这次不实现 Worker 后端。它还没有本节的状态机，也不把 P7a 提前成产品交付。
+并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。双缓冲是未来的设计，目前还未实现。2026-10-28 已决定主路径是 SharedArrayBuffer 双缓冲加 Atomics，逻辑绘制缓冲是可写的 back 槽，不使用 OffscreenCanvas，三缓冲不是默认。目前 demo 在主线程用 `Vec<Rgba8>` 或 webgpu framebuffer，再 `putImageData`。它还没有本节的状态机，也不把 P7a 提前成产品交付。
 
 ### 9.1 状态与对象
 
@@ -723,7 +739,9 @@ P0 queue spike 至少覆盖：1-worker 无死锁、连续多个 submit、`queue.
 
 ### 14.2 推荐呈现路径
 
-- 2026-10-28 已决定：默认是一块 SharedArrayBuffer 的双缓冲。front 给主线程呈现，back 给 Worker 光栅，交接用 Atomics（帧序号，以及哪一块可读）。逻辑绘制缓冲就是可写的 back 槽，不为每一帧再拷一份全帧逻辑 framebuffer。三缓冲不是默认，只有测到呈现停顿才考虑。
+这一节是未来的设计，目前还未实现。目前 webgl-mock 与 webgpu-mock 都在主线程把 CPU framebuffer 交给 `putImageData`。
+
+- 这是未来的设计，目前还未实现。2026-10-28 已决定：默认是一块 SharedArrayBuffer 的双缓冲。front 给主线程呈现，back 给 Worker 光栅，交接用 Atomics（帧序号，以及哪一块可读）。逻辑绘制缓冲就是可写的 back 槽，不为每一帧再拷一份全帧逻辑 framebuffer。三缓冲不是默认，只有测到呈现停顿才考虑。目前 webgl-mock 用 `Vec<Rgba8>`，webgpu-mock 用 `glgpu-core` 的 framebuffer，两边都由主线程 `putImageData`。
 - 不把这唯一的 SharedArrayBuffer transfer 走。主线程呈现 front 槽时，若 `ImageData` 不能接收共享视图，只从该槽复制。
 - Rayon 并行完成 origin flip、format、sRGB/alpha 和 debug overlay，写入 `WRITING` 的共享 presentation buffer；普通 ArrayBuffer-backed ImageData 只能由 owner 线程复制，不能让 Rayon 直接并行写。
 - full-frame 模式复用一个普通 ImageData，执行等价于 `imageData.data.set(sharedView)` 的整帧复制；resize 时才重建。
@@ -1154,4 +1172,4 @@ compute/barrier 范围）和量化 Q6（参考机器、分辨率、场景与帧�
 建议下一迭代先实现项目自有 shader IR/字节码与 WGSL lowering，让 demo 顶点/片元 shader 真正在 CPU
 执行；随后加入 buffer、bind group、render pipeline、texture/sampler 和 capture schema。owner-worker 与异步
 queue spike 应作为独立 gate，不能把当前同步 `ImmediateMainOwnerQueue` 宣称成标准 WebGPU queue。WebGL
-的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm，并把像素直接交给页面 canvas。2026-10-28 已决定：权威像素在 SharedArrayBuffer 双缓冲的 back 槽，主线程呈现 front 槽。不使用 OffscreenCanvas。这次不实现 Worker 后端。
+的产品实现继续冻结到 P7a+，只保留公共架构兼容检查。ADR 0003 的 webgl-mock 在独立的 `glgpu-webgl` 里推进 CPU 子集，不调用原生 WebGL / 原生 WebGPU，也不并入 webgpu-mock crate。demo 页当前仍是主线程单线程 Wasm，并把像素直接交给页面 canvas。这是未来的设计，目前还未实现。权威像素将在 SharedArrayBuffer 双缓冲的 back 槽，主线程呈现 front 槽。目前像素在 CPU framebuffer，主线程 `putImageData`。不使用 OffscreenCanvas。
