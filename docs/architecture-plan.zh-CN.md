@@ -1,6 +1,6 @@
 # GLGPU：WebGPU 优先的 CPU 调试模拟器规划（WebGL 后续）
 
-GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。这是文档里的宗旨，不是代码开关。下文的 webgl-mock / webgpu-mock 是 CPU 模拟，原生 WebGL / 原生 WebGPU 是浏览器内建 API。
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。这是文档里的宗旨，不是代码开关。webgl-mock 与 webgpu-mock 是对等的两条 CPU 实现。原生 WebGL / 原生 WebGPU 只在 demo 层做并排对照，目前还没有这两页。
 
 ## 现有实现与未来设计
 
@@ -158,11 +158,12 @@ WebGPU 方法、常量和 descriptor 的静态骨架优先从官方 WebIDL 生�
 ```text
 Rust client API                  optional JS façade
        │                                │
-       ├──────── WebGPU frontend ───────┤  当前主线 P0–P6
+       ├──────── webgpu-mock ───────────┤  与 webgl-mock 对等；现有 CPU 子集
        │    objects/encoders/queue      │
        │                                │
-       └──────── WebGL frontend ────────┘  后续 P7a–P9
+       └──────── webgl-mock ────────────┘  与 webgpu-mock 对等；现有 CPU 子集
                state + validation
+demo 层（未来）：原生 WebGPU / 原生 WebGL 对照页，不进入 mock crate
                         │
               immutable packets
         DrawPacket / DispatchPacket / CopyPacket
@@ -406,7 +407,7 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
 
-并行的 webgl-mock 见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。那条栈在独立 crate 里用 CPU 从零实现模拟 WebGL，不调用原生 WebGL 或原生 WebGPU，也不依赖 webgpu-mock 的 crate。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。双缓冲是未来的设计，目前还未实现。2026-10-28 已决定主路径是 SharedArrayBuffer 双缓冲加 Atomics，逻辑绘制缓冲是可写的 back 槽，不使用 OffscreenCanvas，三缓冲不是默认。目前 demo 在主线程用 `Vec<Rgba8>` 或 webgpu framebuffer，再 `putImageData`。它还没有本节的状态机，也不把 P7a 提前成产品交付。
+webgl-mock 与 webgpu-mock 对等，见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。它在独立 crate 里用 CPU 实现模拟 WebGL，不依赖 webgpu-mock 的 crate。原生 WebGL 对照页放在 demo 层，这是未来的设计，目前还未实现。页面上的三角形是 demo。当前 demo 页在主线程跑单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。双缓冲是未来的设计，目前还未实现。2026-10-28 已决定主路径是 SharedArrayBuffer 双缓冲加 Atomics，逻辑绘制缓冲是可写的 back 槽，不使用 OffscreenCanvas，三缓冲不是默认。目前 demo 在主线程用 `Vec<Rgba8>` 或 webgpu framebuffer，再 `putImageData`。它还没有本节的状态机。
 
 ### 9.1 状态与对象
 

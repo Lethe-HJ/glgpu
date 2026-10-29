@@ -2,7 +2,7 @@
 
 GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。代码和文档里的产品名称仍是 webgl-mock / webgpu-mock，以及原生 WebGL / 原生 WebGPU。
 
-GLGPU 在 CPU 上做模拟 WebGPU（webgpu-mock）和模拟 WebGL（webgl-mock），不是浏览器里的原生 WebGPU / 原生 WebGL。主线是 webgpu-mock：使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。
+webgl-mock 与 webgpu-mock 是对等的两条 CPU 实现，不是主从。原生 WebGL / 原生 WebGPU 只计划放在 demo 层做并排对照；这是未来的设计，目前仓库里没有这两页。webgpu-mock 使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。
 
 这是现有设计，代码中已经这样做：webgpu-mock 把三角形画进 CPU framebuffer，再经 Canvas 2D `putImageData` 交到页面 canvas；标识是 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。webgl-mock 的三角形 demo 用 `DemoContext` 里的 `Vec<Rgba8>`，在主线程 Wasm 里光栅，再 `putImageData` 交到页面 canvas。页面不用原生 WebGL / WebGPU，也不用 OffscreenCanvas。
 
@@ -146,9 +146,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 下一里程碑是项目自有 shader IR/字节码与 WGSL lowering，使 vertex/fragment shader 真正在 CPU 上执行；随后再加入资源模型、render pipeline、buffer、bind group、texture/sampler 和版本化 capture schema。异步 owner-worker queue 与 compute 是独立 gate，不会用当前同步 queue 冒充标准语义。
 
-WebGL 的产品实现继续延后到 P7a+。当前主线不实现 ESSL parser、WebGL 状态机或 WebGL façade。
-
-另有一条并行的 webgl-mock，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里从零实现模拟 WebGL，不依赖原生 `WebGLRenderingContext` 或 `navigator.gpu`，也不依赖 webgpu-mock 的 crate。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 编辑并运行这个 demo，再用 Canvas 2D `putImageData` 直接交到页面 canvas。2026-10-28 已决定：主路径是 SharedArrayBuffer 双缓冲加 Atomics。逻辑绘制缓冲是 back 槽，主线程呈现 front 槽。不使用 OffscreenCanvas。这次不实现 Worker 后端。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。这不改变 P0 的 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 契约，也不把 P7 标成产品已经开工。
+webgl-mock 与 webgpu-mock 对等，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里用 CPU 实现模拟 WebGL，不依赖 webgpu-mock 的 crate，也不把原生 WebGL 当作自己的绘制后端。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 编辑并运行这个 demo，再用 Canvas 2D `putImageData` 直接交到页面 canvas。这是未来的设计，目前还未实现：SharedArrayBuffer 双缓冲加 Atomics，back 槽是逻辑绘制缓冲，主线程呈现 front 槽；也不使用 OffscreenCanvas。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。`CpuGpuSubset — NOT WEBGPU CONFORMANT` 同样保留。原生对照页还没有。
 
 ## 许可证状态
 

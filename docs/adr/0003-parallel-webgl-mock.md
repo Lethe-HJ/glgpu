@@ -10,9 +10,9 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 
 ## 术语
 
-- **webgl-mock / 模拟 WebGL**：本决策的 CPU 实现。入口 `WebGlMock`。页面上的三角形是 demo，上下文类型是 `DemoContext`。标识 `webgl-mock — NOT WEBGL CONFORMANT`。
-- **webgpu-mock / 模拟 WebGPU**：WebGPU 主线的 CPU 实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
-- **原生 WebGL / 原生 WebGPU**：浏览器内建 API。禁止作为渲染后端。
+- **webgl-mock / 模拟 WebGL**：与 webgpu-mock 对等的 CPU 实现。入口 `WebGlMock`。页面上的三角形是 demo，上下文类型是 `DemoContext`。标识 `webgl-mock — NOT WEBGL CONFORMANT`。
+- **webgpu-mock / 模拟 WebGPU**：与 webgl-mock 对等的 CPU 实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
+- **原生 WebGL / 原生 WebGPU**：只在 demo 层做并排对照，不是 mock crate 的绘制后端。对照页目前还没有。
 
 ## 现有实现与未来设计
 
@@ -40,9 +40,15 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 
 这是未来的设计，目前还未实现。目前 `/webgl.html` 把 `glgpu-webgl-web` 作为主线程上的单线程 Wasm 跑 webgl-mock，再用 Canvas 2D `putImageData` 把像素直接交到页面 canvas。还没有 Web API façade，也没有这块双缓冲 SharedArrayBuffer。webgpu-mock 的 Rayon worker 只执行 tile kernel，queue 仍在 owner 线程同步执行，同样不是这条目标模型。
 
+## 仓库位置（2026-10-29）
+
+webgl-mock 与 webgpu-mock 是对等的两条 CPU 实现，在仓库里并行，不是主从。这是现有的 crate 划分：`glgpu-webgl` 与 `glgpu-webgpu` 互不依赖，顶栏两页都是 mock。
+
+原生 WebGL 与原生 WebGPU 只放在 demo 层，用来和对应的 mock demo 对画面。例如 webgl-mock 的彩色三角形看不准时，打开同一画面的原生 demo。它们不是 mock crate 里面的绘制后端。这是未来的设计，目前还未实现：仓库里还没有这两张原生对照页。
+
 ## 背景
 
-仓库在不调用原生 WebGL / 原生 WebGPU 的前提下，自己实现相近的 API，作为运行在 CPU 上的模拟。当前 `main` 的主线是 webgpu-mock，也就是 P0 垂直切片。页面契约仍然是 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
+仓库用 CPU 自己实现 webgl-mock 与 webgpu-mock。webgpu-mock 的页面契约仍然是 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。webgl-mock 的页面契约仍然是 `webgl-mock — NOT WEBGL CONFORMANT`。
 
 [ADR 0001](0001-webgpu-first.md) 把产品顺序定为 WebGPU 优先，ESSL 与 WebGL 的产品实现放在 P7a+。该决定继续有效。公共 IR、光栅约定和 capture schema 还没有稳定，不能在产品主线上同时展开两套可执行栈。
 
@@ -51,9 +57,9 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 ## 决策
 
 1. 新增并行的 webgl-mock。目标与 webgpu-mock 相同：从 0 到 1，在 CPU 上从零实现一套完整的 WebGL2 风格栈。执行、校验和光栅都写在本仓库的软件路径里。页面上的三角形是 demo。
-2. 这条栈不依赖原生 WebGL 或原生 WebGPU。禁止把 `WebGLRenderingContext`、`canvas.getContext("webgl2")`、`navigator.gpu` 或任何宿主 GPU 绘制调用当作后端、参考执行器或脚手架依赖。宿主 GPU 将来若出现，也只能作为测试 oracle，不能成为渲染后端；这一条与 ADR 0001 对宿主 WebGPU / WebGL 的拒绝一致。
+2. mock crate 自己用 CPU 绘制，不把 `WebGLRenderingContext`、`canvas.getContext("webgl2")`、`navigator.gpu` 或宿主 GPU 绘制调用当作本 crate 的后端。原生 WebGL / 原生 WebGPU 的位置在 demo 层，做并排对照，不进这个 crate。2026-10-29 的仓库位置补充说明了这一点。
 3. 最终画面仍按项目既有方向，把 CPU framebuffer 转成 RGBA8，经 Canvas 2D `putImageData` 呈现。2026-10-28 已决定的双缓冲是未来的设计，目前还未实现：主路径将是 SharedArrayBuffer 双缓冲，逻辑绘制缓冲是可写的 back 槽，主线程呈现 front 槽；不使用 OffscreenCanvas，三缓冲也不是默认。目前 demo 页在主线程壳 crate 里把 `Vec<u8>` 直接交给页面 canvas，那不是 `DemoContext` 的 present 方法，页面 canvas 也不是 GL 绘制目标。
-4. 产品顺序不变。ADR 0001 仍是主线。P0 的 `NOT WEBGPU CONFORMANT` 文案不得删除或改成合规声明。webgl-mock 自己的永久标识是 `webgl-mock — NOT WEBGL CONFORMANT`。支持矩阵在实现对应行为之前只能记录 `NotStarted`，不能把缺口报成已支持。
+4. 两条 mock 对等，都不是合规实现。P0 的 `NOT WEBGPU CONFORMANT` 文案不得删除或改成合规声明。webgl-mock 自己的永久标识是 `webgl-mock — NOT WEBGL CONFORMANT`。支持矩阵在实现对应行为之前只能记录 `NotStarted`，不能把缺口报成已支持。2026-10-29 起，不再把 webgpu-mock 写成仓库里的主线、把 webgl-mock 写成附页。
 5. 首个变更只放入脚手架。**这一条已被文末补充决定取代：** 这条 CPU 栈可以在 `glgpu-webgl` 内继续实现独立的 CPU 子集，但仍然不实现 WebGL 状态机、`drawArrays` / `drawElements`、`readPixels`、JavaScript façade 或浏览器上下文包装。
 6. 早期文字要求以后复用公共 CPU 内核。**这一条已被文末补充决定取代：** 这条栈保持独立，不依赖 WebGPU crate，也不调用浏览器渲染器。
 7. 若要把产品路线从“P7a+ 才实现 WebGL”改成“主线提前交付可运行的 WebGL2”，必须再写一份 ADR。本 ADR 不构成那次重新评估。`spec-lock.toml` 里 `[deferred.webgl]` 的产品阶段和禁止项保持不变。
@@ -78,7 +84,7 @@ crate 名沿用架构规划第 6 节已经写过的 `glgpu-webgl`。调试页 `g
 
 ### 用浏览器 WebGL 或 WebGPU 完成绘制
 
-拒绝。目标是自己实现栈。`web-sys` 的 `WebGLRenderingContext`、`navigator.gpu` 和宿主 `drawArrays` 都不能作为 `glgpu-webgl` 的依赖或后端。
+拒绝把它们当作 `glgpu-webgl` 的绘制后端。原生对照放在 demo 层，不放进这个 crate。
 
 ### 在一次变更里实现完整 WebGL2
 

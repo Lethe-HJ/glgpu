@@ -5,13 +5,30 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 > 状态：CPU 子集。是模拟 WebGL，不是原生 WebGL，也不是合规实现。  
 > 日期：2026-10-27  
 > 决策：[ADR 0003](adr/0003-parallel-webgl-mock.md)  
-> 产品顺序：不变。webgpu-mock 的 P0 仍是主线，WebGL 产品实现仍是路线图上的 P7a+。
+> 仓库位置：webgl-mock 与 webgpu-mock 是对等的两条 CPU 实现，不是主从。
+
+## 仓库位置
+
+```text
+demo 层（对照）
+  原生 WebGL demo          原生 WebGPU demo
+  未来：并排打开，用来对画面。目前仓库里没有这两页。
+
+mock 层（对等）
+  webgl-mock               webgpu-mock
+  现有：crates/glgpu-webgl  现有：crates/glgpu-webgpu
+  页：web/webgl.html        页：web/index.html
+```
+
+webgl-mock 与 webgpu-mock 是并行的两种图形技术，不是一条主线、一条附页。原生 WebGL / 原生 WebGPU 只放在 demo 层，给同一画面做对照。例如 webgl-mock 的彩色三角形看不准时，打开对应的原生 demo 比画面。原生 API 不是 mock crate 里面的绘制后端。
+
+这是未来的设计，目前还未实现：仓库里还没有原生 WebGL 或原生 WebGPU 的对照页。目前顶栏的 WebGL / WebGPU 都是 mock 页。
 
 ## 术语
 
-- **webgl-mock / 模拟 WebGL**：本文这条 CPU 实现。入口 `WebGlMock`，三角形 demo 的上下文是 `DemoContext`。
-- **webgpu-mock / 模拟 WebGPU**：WebGPU 主线的 CPU 实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
-- **原生 WebGL / 原生 WebGPU**：浏览器内建 API。本栈不调用它们。
+- **webgl-mock / 模拟 WebGL**：与 webgpu-mock 对等的 CPU 实现。入口 `WebGlMock`，三角形 demo 的上下文是 `DemoContext`。
+- **webgpu-mock / 模拟 WebGPU**：与 webgl-mock 对等的 CPU 实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
+- **原生 WebGL / 原生 WebGPU**：只在 demo 层做并排对照。不是 mock crate 的绘制后端。对照页目前还没有。
 
 ## 现有实现与未来设计
 
@@ -22,7 +39,9 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 | 产品名 webgl-mock / webgpu-mock；三角形页是 demo | 现有 | `WebGlMock`、`DemoContext`，标识 `webgl-mock — NOT WEBGL CONFORMANT`。webgpu 标识仍是 `CpuGpuSubset — NOT WEBGPU CONFORMANT` |
 | RGBA8 clear、WebGL clip、ESSL→bytecode→CPU 解释器、shader 三角形 | 现有 | `DemoContext` 持有 `Vec<Rgba8>`，`clear` 与 `draw_shader_triangle` 在 `glgpu-webgl`。没有 `drawArrays`，也没有 present 方法 |
 | demo 页在主线程把像素贴到页面 canvas | 现有 | `glgpu-webgl-web` 在主线程调用 `get_context("2d")` 和 `put_image_data`。像素来自 `to_rgba8_bytes()` |
-| 不调用原生 WebGL / 原生 WebGPU，也不使用 OffscreenCanvas | 现有 | 页面只拿 Canvas 2D。代码里没有 OffscreenCanvas，也没有 `getContext("webgl")` |
+| mock crate 自己用 CPU 画，不用原生 API 当绘制后端 | 现有 | `glgpu-webgl` 不调用 `getContext("webgl")` 或 `navigator.gpu` |
+| demo 层的原生 WebGL / 原生 WebGPU 对照页 | 未来 | 这是未来的设计，目前还未实现。目前没有并排的原生三角形页 |
+| 不使用 OffscreenCanvas | 现有，未来仍如此 | 代码里没有 OffscreenCanvas |
 | Worker + Wasm 后端；主线程只做 Web API façade | 未来 | 这是未来的设计，目前还未实现。目前 webgl 页的 Wasm 跑在主线程 |
 | SharedArrayBuffer 双缓冲 + Atomics；back 槽是逻辑绘制缓冲 | 未来 | 这是未来的设计，目前还未实现。目前绘制缓冲是 `DemoContext` 里的 `Vec<Rgba8>`，不是 SAB 的槽 |
 | 三缓冲不是默认 | 未来约束 | 目前既没有双槽，也没有第三块呈现缓冲 |
@@ -44,9 +63,9 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 
 ## 这条栈做什么
 
-GLGPU 在 CPU 上做 webgpu-mock 和 webgl-mock，不把浏览器已经提供的原生 GPU API 包一层。webgpu-mock 已经有 P0 三角形 demo。webgl-mock 按同一个方向并行推进，并且是**独立栈**：代码只在 `crates/glgpu-webgl`，不依赖 `glgpu-core`、`glgpu-raster`、`glgpu-shader`、`glgpu-webgpu` 或其他 webgpu-mock crate。
+webgl-mock 与 webgpu-mock 对等。这条栈是独立 crate：代码只在 `crates/glgpu-webgl`，不依赖 `glgpu-core`、`glgpu-raster`、`glgpu-shader`、`glgpu-webgpu` 或其他 webgpu-mock crate。mock 自己在 CPU 上画，不把原生 WebGL 或原生 WebGPU 拿来当绘制后端。
 
-执行发生在本 crate 的 CPU 代码里。它不调用原生 WebGL，也不调用原生 WebGPU：
+执行发生在本 crate 的 CPU 代码里。原生对照放在 demo 层，不放进这个 crate：
 
 - 不使用 `WebGLRenderingContext` / `WebGL2RenderingContext`；
 - 不包装 `canvas.getContext("webgl2")`；
@@ -110,17 +129,17 @@ crates/glgpu-webgl/                         # webgl-mock，零外部依赖，不
   src/raster.rs                             # 存储坐标三角形，以及 clip / shader 绘制
   src/essl.rs                               # 子集词法、语法、AST、源码 span
   src/vm.rs                                 # bytecode、lowering、CPU 解释器、步骤记录
-crates/glgpu-webgl-web/                     # webgl-mock demo 页；当前主线程单线程 Wasm；只依赖 glgpu-webgl；不是原生 WebGL façade
+crates/glgpu-webgl-web/                     # webgl-mock demo 页；与 webgpu-mock 页对等；当前主线程单线程 Wasm
 docs/adr/0003-parallel-webgl-mock.md
 docs/webgl-mock.zh-CN.md                    # 本文
 docs/support-matrix/webgl-mock.toml
 examples/webgl2-triangle/p0_vertex.essl     # 驱动三角形 demo 的顶点着色器
 examples/webgl2-triangle/float_local.essl   # 只含 load_const / move 的解释器夹具
 web/webgl.html                              # webgl-mock demo 页 loader；当前主线程
-web/index.html                              # webgpu-mock 调试页 loader；顶栏链到 webgl.html
+web/index.html                              # webgpu-mock 页 loader；与 webgl.html 对等
 ```
 
-站点顶栏是 `WebGPU | WebGL`。点另一侧会整页重载，默认仍是 WebGPU。
+站点顶栏是 `WebGPU | WebGL`，两边都是 mock。点另一侧会整页重载。原生对照页还没有。
 
 - `web/index.html` 只启动 `glgpu-web` 的 WGSL / P0 调试页。
 - `web/webgl.html` 只启动 `crates/glgpu-webgl-web`。那个壳只依赖 `glgpu-webgl`，编辑并编译当前 ESSL 子集，再用 CPU 解释器画三角形 demo。画面经 Canvas 2D `putImageData` 呈现，不调用浏览器 WebGL 或 WebGPU。
@@ -144,7 +163,7 @@ cargo xtask serve
 4. mutable state、`drawArrays`、`readPixels`，以及 `DemoContext` 自己的 present 方法。调试页已经把存储第 0 行直接交给 Canvas 2D，不再翻一次 y。
 5. JavaScript adapter 放在最后，并且不是浏览器原生 `WebGL2RenderingContext`。
 
-WebGPU 主线的下一程不变：项目自有 shader IR 和 WGSL 的 CPU 执行。两条栈不共享 crate。
+两条 mock 不共享 crate。webgpu-mock 自己的下一程仍是项目自有 shader IR 和 WGSL 的 CPU 执行。
 
 ## 相关文档
 
