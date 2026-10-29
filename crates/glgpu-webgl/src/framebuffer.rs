@@ -13,6 +13,7 @@ use std::fmt;
 use crate::CONFORMANCE_BANNER;
 
 /// Unpremultiplied 8-bit color stored by the CPU framebuffer.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Rgba8 {
     pub r: u8,
@@ -74,11 +75,7 @@ impl DemoContext {
         if width == 0 || height == 0 {
             return Err(ContextError::EmptyExtent);
         }
-        let count = u64::from(width)
-            .checked_mul(u64::from(height))
-            .ok_or(ContextError::ExtentOverflow { width, height })?;
-        let count =
-            usize::try_from(count).map_err(|_| ContextError::ExtentOverflow { width, height })?;
+        let count = pixel_count(width, height)?;
         Ok(Self {
             width,
             height,
@@ -119,6 +116,19 @@ impl DemoContext {
     /// Tightly packed RGBA8, row 0 at the top.
     ///
     /// Canvas 2D `putImageData` can consume this order without flipping y.
+    /// Replace pixels from tightly packed RGBA8. The allocation size stays the
+    /// same. This is an inspector copy of a presented front slot, not a second
+    /// logical drawing buffer.
+    pub fn copy_from_rgba8_bytes(&mut self, bytes: &[u8]) -> bool {
+        if bytes.len() != self.pixel_byte_len() {
+            return false;
+        }
+        for (pixel, chunk) in self.pixels.iter_mut().zip(bytes.chunks_exact(4)) {
+            *pixel = Rgba8::new(chunk[0], chunk[1], chunk[2], chunk[3]);
+        }
+        true
+    }
+
     pub fn to_rgba8_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.pixels.len().saturating_mul(4));
         for pixel in &self.pixels {
@@ -152,6 +162,26 @@ impl DemoContext {
     pub(crate) fn pixels_mut(&mut self) -> &mut [Rgba8] {
         &mut self.pixels
     }
+
+    /// Borrow the slot storage. The allocation stays put so a SharedArrayBuffer
+    /// view can map onto it.
+    pub fn pixel_ptr(&self) -> *const u8 {
+        self.pixels.as_ptr().cast::<u8>()
+    }
+
+    pub fn pixel_byte_len(&self) -> usize {
+        self.pixels.len().saturating_mul(4)
+    }
+}
+
+fn pixel_count(width: u32, height: u32) -> Result<usize, ContextError> {
+    if width == 0 || height == 0 {
+        return Err(ContextError::EmptyExtent);
+    }
+    let count = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or(ContextError::ExtentOverflow { width, height })?;
+    usize::try_from(count).map_err(|_| ContextError::ExtentOverflow { width, height })
 }
 
 #[cfg(test)]

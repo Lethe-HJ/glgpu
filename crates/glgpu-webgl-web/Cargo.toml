@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Wasm demo page for webgl-mock. Not a native WebGL context. Current build runs single-threaded Wasm on the main thread and presents with Canvas 2D."
+description = "Wasm demo page for webgl-mock. Not a native WebGL context. Presents the worker front slot when SharedArrayBuffer exists, and otherwise rasterizes on the main thread."
 
 [lib]
 crate-type = ["cdylib", "rlib"]

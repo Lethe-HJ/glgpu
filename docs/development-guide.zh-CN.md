@@ -179,18 +179,20 @@ glgpu/
 │   └── support-matrix/         # webgpu-mock 的 P0 矩阵，以及 webgl-mock 矩阵
 ├── web/
 │   ├── index.html              # WebGPU ST/MT loader、顶栏和 #app mount point
-│   ├── webgl.html              # webgl-mock demo 页 loader；当前主线程单线程 Wasm
+│   ├── webgl.html              # webgl-mock 编辑器 loader；隔离时把绘制交给 worker
 │   ├── api-nav.css             # 顶栏样式；两条页面共用
 │   ├── coop-coep.js            # 仅 Pages 的 WebGPU MT 入口用来补 COOP/COEP
 │   ├── .nojekyll               # 避免分支式 Pages 走 Jekyll
 │   ├── pkg/                    # WebGPU ST 生成物；gitignored
 │   ├── pkg-mt/                 # WebGPU MT 生成物及 Rayon worker snippet；gitignored
-│   └── pkg-webgl/              # WebGL demo 页生成物；gitignored
+│   ├── pkg-webgl/              # WebGL 编辑器生成物；gitignored
+│   ├── pkg-webgl-worker/       # webgl-mock present worker；gitignored
+│   └── pkg-webgpu-worker/      # webgpu-mock present worker；gitignored
 ├── .github/workflows/pages.yml # 构建 ST/MT 并发布 web/ 到 GitHub Pages
 └── xtask/                      # Rust 编写的构建编排和带隔离头的静态服务器
 ```
 
-不要手工修改 `web/pkg`、`web/pkg-mt` 或 `web/pkg-webgl`。它们是可重建产物并被 `.gitignore` 忽略；源代码改动应落在 Rust crate、`web/index.html`、`web/webgl.html`、`web/api-nav.css`、`web/coop-coep.js` 或 `xtask` 中。
+不要手工修改 `web/pkg`、`web/pkg-mt`、`web/pkg-webgl`、`web/pkg-webgl-worker` 或 `web/pkg-webgpu-worker`。它们是可重建产物并被 `.gitignore` 忽略。源代码改动应落在 Rust crate、`web/index.html`、`web/webgl.html`、`web/present-slots.js`、`web/webgl-worker.js`、`web/webgpu-worker.js`、`web/api-nav.css`、`web/coop-coep.js` 或 `xtask` 中。
 
 根 workspace 设置了 `default-members`，普通 `cargo test` 不会覆盖
 `glgpu-canvas2d`、`glgpu-web` 和 `xtask`。`glgpu-webgl-web` 的 native 测试在默认成员里。提交前使用 `--workspace`。
@@ -511,7 +513,7 @@ pkg-webgl/glgpu_webgl_web.js
 pkg-webgl/glgpu_webgl_web_bg.wasm
 ```
 
-CI 安装的工具与本指南的锁一致：Rust `1.93.0`、`wasm-pack 0.14.0`、`wasm-bindgen 0.2.127`，以及带 `rust-src` 的 `nightly-2025-11-15`。WebGPU ST 用 `cargo xtask build-web --release`，WebGPU MT 用 `cargo xtask build-web-mt`，WebGL demo 页用 `cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web`。
+CI 安装的工具与本指南的锁一致：Rust `1.93.0`、`wasm-pack 0.14.0`、`wasm-bindgen 0.2.127`，以及带 `rust-src` 的 `nightly-2025-11-15`。WebGPU ST 用 `cargo xtask build-web --release`，WebGPU MT 用 `cargo xtask build-web-mt`，WebGL 编辑器页用 `cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web`，两条 present worker 用 `cargo xtask build-present-workers`。
 
 启用站点：
 

@@ -38,20 +38,20 @@ webgl-mock 与 webgpu-mock 是并行的两种图形技术，不是一条主线�
 | --- | --- | --- |
 | 产品名 webgl-mock / webgpu-mock；三角形页是 demo | 现有 | `WebGlMock`、`DemoContext`，标识 `webgl-mock — NOT WEBGL CONFORMANT`。webgpu 标识仍是 `CpuGpuSubset — NOT WEBGPU CONFORMANT` |
 | RGBA8 clear、WebGL clip、ESSL→bytecode→CPU 解释器、shader 三角形 | 现有 | `DemoContext` 持有 `Vec<Rgba8>`，`clear` 与 `draw_shader_triangle` 在 `glgpu-webgl`。没有 `drawArrays`，也没有 present 方法 |
-| demo 页在主线程把像素贴到页面 canvas | 现有 | `glgpu-webgl-web` 在主线程调用 `get_context("2d")` 和 `put_image_data`。像素来自 `to_rgba8_bytes()` |
+| demo 页把像素贴到页面 canvas | 现有 | 跨源隔离时，主线程从 front 槽复制再 `putImageData`。未隔离时，`glgpu-webgl-web` 仍用 `to_rgba8_bytes()`。`DemoContext` 没有 present 方法 |
 | mock crate 自己用 CPU 画，不用原生 API 当绘制后端 | 现有 | `glgpu-webgl` 不调用 `getContext("webgl")` 或 `navigator.gpu` |
 | demo 层的原生 WebGL / 原生 WebGPU 对照页 | 未来 | 这是未来的设计，目前还未实现。目前没有并排的原生三角形页 |
-| 不使用 OffscreenCanvas | 现有，未来仍如此 | 代码里没有 OffscreenCanvas |
-| Worker + Wasm 后端；主线程只做 Web API façade | 未来 | 这是未来的设计，目前还未实现。目前 webgl 页的 Wasm 跑在主线程 |
-| SharedArrayBuffer 双缓冲 + Atomics；back 槽是逻辑绘制缓冲 | 未来 | 这是未来的设计，目前还未实现。目前绘制缓冲是 `DemoContext` 里的 `Vec<Rgba8>`，不是 SAB 的槽 |
-| 三缓冲不是默认 | 未来约束 | 目前既没有双槽，也没有第三块呈现缓冲 |
+| 不使用 OffscreenCanvas | 现有 | 代码里没有 OffscreenCanvas |
+| Worker + Wasm 后端；主线程做编辑器 façade | 现有，范围有限 | 这是现有设计，代码中已实现：`glgpu-webgl-worker` 在隔离页面里光栅。未隔离时绘制仍在主线程。这不是完整的 WebGL JavaScript façade，也不是 `drawArrays` |
+| SharedArrayBuffer 双缓冲 + Atomics；back 槽是逻辑绘制缓冲 | 现有，范围有限 | 这是现有设计，代码中已实现：back 槽就是 `DemoContext` 的像素。命令字节在同一块缓冲里。未隔离时没有这块缓冲 |
+| 三缓冲不是默认 | 现有约束 | 代码是双槽，没有第三块呈现缓冲 |
 | 实验性、亲自实现以抓住核心 | 原则 | 写在文档里，不是某个代码开关 |
 
 ## 线程模型
 
-下面 1–5 是未来的设计，目前还未实现。目前是用主线程上的 `DemoContext`（`Vec<Rgba8>`）光栅，再 `to_rgba8_bytes` 后用 Canvas 2D `putImageData` 交到页面 canvas。
+下面 1–5 是现有设计，代码中已经在跨源隔离的 demo 页这样做。未隔离时仍用主线程上的 `DemoContext`（`Vec<Rgba8>`）光栅，再 `to_rgba8_bytes` 后用 Canvas 2D `putImageData`。
 
-已决定（2026-10-28）：呈现使用一块 **SharedArrayBuffer 双缓冲**。不使用 OffscreenCanvas。此前方案 C 的 OffscreenCanvas blit 已撤销。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露 Web API façade。这次只锁定方案，不实现 Worker 后端。
+已决定（2026-10-28），并在 2026-10-29 的 demo 页落地：呈现使用一块 **SharedArrayBuffer 双缓冲**。不使用 OffscreenCanvas。此前方案 C 的 OffscreenCanvas blit 已撤销。浏览器放进原生 WebGL / 原生 WebGPU 内部的工作，放在 **Worker + Wasm 后端**。主线程暴露编辑器 façade。这不是完整的 WebGL JavaScript façade。
 
 1. 同一块 SharedArrayBuffer 里有两个像素槽。front 给主线程呈现，back 给 Worker 光栅。交接用 Atomics（帧序号，以及哪一块可读）。不把这唯一的缓冲 transfer 走。
 2. 逻辑绘制缓冲就是当前可写的 back 槽，Wasm 视图映射到这个槽。它是光栅结果、framebuffer hash、单元测试和像素调试的权威来源，对应原生 WebGL 的 drawing buffer。不为每一帧再保留一份独立的全帧逻辑 framebuffer 再拷进 SharedArrayBuffer。以后若要离屏 FBO 或非呈现尺寸，才可能另留。
@@ -59,7 +59,7 @@ webgl-mock 与 webgpu-mock 是并行的两种图形技术，不是一条主线�
 4. 主线程用 Canvas 2D 呈现 front 槽（`putImageData` / `ImageData`）。`ImageData` 不能直接接收共享视图时，只从当前 front 槽复制，这不是另一份逻辑绘制缓冲。页面 canvas 只负责呈现。管线不把可见页面 canvas 当作 GL 绘制目标。没有 OffscreenCanvas blit。
 5. 高效通信的主路径是这块双缓冲 SharedArrayBuffer 和 Atomics。若以后需要一份副本快照，可以用零拷贝转移；那不是主路径。像素载荷不用拷贝式 `postMessage`。
 
-这是未来的设计，目前还未实现。目前 `/webgl.html` 是主线程上的单线程 Wasm：在主线程运行 webgl-mock，再用 Canvas 2D `putImageData` 把 `Vec<u8>` 直接交到页面 canvas。还没有 Web API façade，也没有这块双缓冲 SharedArrayBuffer。
+这是现有设计，代码中已实现。`/webgl.html` 在 `crossOriginIsolated` 时启动 `web/webgl-worker.js`。ESSL 源码写入共享命令区，Worker 调用 `run_commanded_essl`，主线程用 Atomics 选择 front 槽再 `putImageData`。检查器里的 `DemoContext` 只是 front 槽的副本，不是第二份逻辑绘制缓冲。页面没有隔离头时，`glgpuQueueEssl` 不存在可用 Worker，绘制退回主线程。`drawArrays` 仍然是 `NotStarted`。
 
 ## 这条栈做什么
 
@@ -101,7 +101,7 @@ ESSL 源码 → AST → 自有 bytecode IR → CPU 解释器
 
 `WebGlMock::create_context` 得到一块 CPU RGBA8 framebuffer，类型是 `DemoContext`。`clear` 覆盖全部像素。`draw_screen_space_triangle` 接收已经落在存储坐标里的三角形，y 向下，用采样点中心的重心坐标覆盖。`draw_clip_space_triangle` 先按 WebGL 体积裁剪，再做透视除法和左下窗口，然后写入这块 framebuffer。`draw_shader_triangle` 对三个顶点各执行一次解释器，读取 `v_clip_*` 和 `v_color_*`。`p0_milestone_triangle` 与这条 shader 路径使用同一套投影，画面朝向与 WebGPU P0 demo 对齐。像素覆盖规则是本 crate 自己的，不保证与 `glgpu-raster` 逐像素相同。没有深度缓冲。
 
-页面上的三角形是 demo，不是一套单独命名的上下文产品。`DemoContext` 没有 present 方法。
+页面上的三角形是 demo，不是一套单独命名的上下文产品。`DemoContext` 没有 present 方法。隔离页面里，这块 `DemoContext` 就是 Worker 的 back 槽。
 
 ESSL 子集可以解析两个夹具：
 
@@ -129,27 +129,32 @@ crates/glgpu-webgl/                         # webgl-mock，零外部依赖，不
   src/raster.rs                             # 存储坐标三角形，以及 clip / shader 绘制
   src/essl.rs                               # 子集词法、语法、AST、源码 span
   src/vm.rs                                 # bytecode、lowering、CPU 解释器、步骤记录
-crates/glgpu-webgl-web/                     # webgl-mock demo 页；与 webgpu-mock 页对等；当前主线程单线程 Wasm
+  src/present.rs                            # 双缓冲槽、Atomics 交接、共享命令区
+crates/glgpu-webgl-web/                     # webgl-mock 编辑器壳；未隔离时自己光栅
+crates/glgpu-webgl-worker/                  # 隔离页面上的 webgl-mock Worker
 docs/adr/0003-parallel-webgl-mock.md
 docs/webgl-mock.zh-CN.md                    # 本文
 docs/support-matrix/webgl-mock.toml
 examples/webgl2-triangle/p0_vertex.essl     # 驱动三角形 demo 的顶点着色器
 examples/webgl2-triangle/float_local.essl   # 只含 load_const / move 的解释器夹具
-web/webgl.html                              # webgl-mock demo 页 loader；当前主线程
+web/webgl.html                              # webgl-mock loader；隔离时启动 worker
+web/webgl-worker.js                         # webgl-mock Worker 入口
+web/present-slots.js                        # 主线程复制 front 槽并 putImageData
 web/index.html                              # webgpu-mock 页 loader；与 webgl.html 对等
 ```
 
 站点顶栏是 `WebGPU | WebGL`，两边都是 mock。点另一侧会整页重载。原生对照页还没有。
 
-- `web/index.html` 只启动 `glgpu-web` 的 WGSL / P0 调试页。
-- `web/webgl.html` 只启动 `crates/glgpu-webgl-web`。那个壳只依赖 `glgpu-webgl`，编辑并编译当前 ESSL 子集，再用 CPU 解释器画三角形 demo。画面经 Canvas 2D `putImageData` 呈现，不调用浏览器 WebGL 或 WebGPU。
-- 两条 Wasm 包互不加载。`glgpu-web` 里没有 WebGL 渲染按钮。
+- `web/index.html` 启动 `glgpu-web` 的 WGSL / P0 调试页。隔离且没有 `?threads=1` 时，绘制在 `glgpu-webgpu-worker`。
+- `web/webgl.html` 启动 `crates/glgpu-webgl-web`。那个壳只依赖 `glgpu-webgl`，编辑并编译当前 ESSL 子集。隔离时三角形由 `glgpu-webgl-worker` 的 CPU 解释器绘制，主线程呈现 front 槽。未隔离时壳自己绘制。画面经 Canvas 2D `putImageData` 呈现，不调用浏览器 WebGL 或 WebGPU。
+- webgl-mock 与 webgpu-mock 的 Wasm 包互不加载。`glgpu-web` 里没有 WebGL 渲染按钮。
 
 本地：
 
 ```bash
 cargo xtask build-web --release
 cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
+cargo xtask build-present-workers
 cargo xtask serve
 ```
 

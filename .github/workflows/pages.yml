@@ -84,6 +84,9 @@ jobs:
       - name: Build the multi-thread package
         run: cargo xtask build-web-mt
 
+      - name: Build the present workers
+        run: cargo xtask build-present-workers
+
       - name: Check Pages assets and relative URLs
         run: |
           set -euo pipefail
@@ -98,19 +101,30 @@ jobs:
           test -f web/pkg-mt/glgpu_web_bg.wasm
           test -f web/pkg-webgl/glgpu_webgl_web.js
           test -f web/pkg-webgl/glgpu_webgl_web_bg.wasm
+          test -f web/present-slots.js
+          test -f web/webgl-worker.js
+          test -f web/webgpu-worker.js
+          test -f web/pkg-webgl-worker/glgpu_webgl_worker.js
+          test -f web/pkg-webgl-worker/glgpu_webgl_worker_bg.wasm
+          test -f web/pkg-webgpu-worker/glgpu_webgpu_worker.js
+          test -f web/pkg-webgpu-worker/glgpu_webgpu_worker_bg.wasm
           find web/pkg-mt -name workerHelpers.no-bundler.js | grep -q .
           grep -q './pkg/glgpu_web.js' web/index.html
           grep -q './pkg-mt/glgpu_web.js' web/index.html
           grep -q './coop-coep.js' web/index.html
           grep -q './webgl.html' web/index.html
           grep -q './pkg-webgl/glgpu_webgl_web.js' web/webgl.html
+          grep -q './present-slots.js' web/webgl.html
+          grep -q './webgl-worker.js' web/webgl.html
+          grep -q './present-slots.js' web/index.html
+          grep -q './webgpu-worker.js' web/index.html
           grep -q './index.html' web/webgl.html
           grep -q './api-nav.css' web/index.html
           grep -q './api-nav.css' web/webgl.html
           grep -q 'Cross-Origin-Opener-Policy' web/coop-coep.js
           grep -q 'Cross-Origin-Embedder-Policy' web/coop-coep.js
           grep -q 'require-corp' web/coop-coep.js
-          if grep -R -n -E 'from "/|import\("/' web/index.html web/webgl.html web/pkg web/pkg-mt web/pkg-webgl --include='*.html' --include='*.js'; then
+          if grep -R -n -E 'from "/|import\("/' web/index.html web/webgl.html web/present-slots.js web/webgl-worker.js web/webgpu-worker.js web/pkg web/pkg-mt web/pkg-webgl web/pkg-webgl-worker web/pkg-webgpu-worker --include='*.html' --include='*.js'; then
             echo "found an absolute import; project Pages need relative URLs" >&2
             exit 1
           fi

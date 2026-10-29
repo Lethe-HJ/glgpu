@@ -7,10 +7,10 @@ implementation = "webgl-mock"
 goal = "webgl-mock: WebGL2-style visualization running on the CPU; not native WebGL"
 backend = "cpu-from-scratch"
 separate_from_webgpu_crates = true
-presentation = "current demo page copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread; DemoContext has no present method. Decided 2026-10-28: double-buffered SharedArrayBuffer. Back slot is the logical drawing buffer. Front slot is presented by main-thread Canvas 2D. Atomics handoff. No OffscreenCanvas. Triple buffering is not the default"
+presentation = "when SharedArrayBuffer exists, the worker back slot is presented by copying the front slot into ImageData. DemoContext has no present method. Without SharedArrayBuffer the page still copies RGBA8 on the main thread. No OffscreenCanvas. Triple buffering is not implemented"
 api_surface = "webgl-mock inside glgpu-webgl; the triangle page is a demo in crates/glgpu-webgl-web"
 threading_target = "decided 2026-10-28: one SharedArrayBuffer, double buffered. Back slot is the authoritative drawing buffer. Front slot is for main-thread Canvas 2D putImageData / ImageData. Handoff uses Atomics. Do not transfer away the sole buffer. Triple buffering is not the default. No OffscreenCanvas. No copied postMessage of pixel payloads"
-threading_current = "single-threaded Wasm on the main thread; putImageData copies onto the page canvas; Worker backend is not built yet"
+threading_current = "glgpu-webgl-worker owns the double-buffered slots when SharedArrayBuffer exists; otherwise single-threaded Wasm on the main thread. drawArrays is not started"
 product_phase = "P7a+ remains the production gate; this file does not move it"
 banner = "webgl-mock — NOT WEBGL CONFORMANT"
 host_webgl = false
@@ -81,7 +81,7 @@ api = [
 
 [notes]
 scope = "webgl-mock inside glgpu-webgl. The triangle page is a demo. Partial rows are not native WebGL entry points. drawArrays is not started."
-debug_page = "web/webgl.html reloads a separate Wasm package on the main thread and putImageData copies onto the page canvas. It is not native WebGLRenderingContext. The double-buffered SharedArrayBuffer path is decided and not implemented here. OffscreenCanvas is not part of the present design. This file does not move explicit present, drawArrays, or the JavaScript facade out of not_started."
+debug_page = "web/webgl.html loads the editor package and, when isolated, web/webgl-worker.js. The page canvas only presents. It is not a native WebGLRenderingContext. OffscreenCanvas is not part of the present design. drawArrays and a full JavaScript WebGL facade stay not_started."
 essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00. glslang 16.6.0 is the accept/reject reference and is not invoked yet."
 coordinates = "Window space is bottom-left and clip Z is -w..w. Stored row 0 is still the top image row."
 debugger = "Instruction spans, per-step local snapshots, and per-step uniform/input/output values are the debugger hook. There is no pause control or UI."

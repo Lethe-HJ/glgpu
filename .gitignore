@@ -2,6 +2,8 @@
 /web/pkg/
 /web/pkg-mt/
 /web/pkg-webgl/
+/web/pkg-webgl-worker/
+/web/pkg-webgpu-worker/
 /.idea/
 /.vscode/
 .DS_Store

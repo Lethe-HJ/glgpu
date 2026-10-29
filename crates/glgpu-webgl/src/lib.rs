@@ -4,12 +4,13 @@
 //! `glgpu-webgpu`, `glgpu-shader`, `glgpu-core`, or the other webgpu-mock
 //! crates, and it does not call browser WebGL or WebGPU.
 //!
-//! Target split: one SharedArrayBuffer holds two pixel slots. The writable back
-//! slot is the logical drawing buffer and the Wasm view maps onto it. Atomics
-//! hand the front slot to the main thread for Canvas 2D present. There is no
-//! OffscreenCanvas blit and no per-frame copy from a second full-frame
-//! framebuffer. The demo page still runs this crate as single-threaded Wasm on
-//! the main thread. The Worker backend is not built yet.
+//! Target split: one SharedArrayBuffer holds two pixel slots and the command
+//! bytes. The writable back slot is the logical drawing buffer and the Wasm
+//! view maps onto it. Atomics hand the front slot to the main thread for
+//! Canvas 2D present. There is no OffscreenCanvas blit and no per-frame copy
+//! from a second full-frame framebuffer. `glgpu-webgl-worker` runs this path
+//! when the page has a SharedArrayBuffer. Without one, the demo page still
+//! rasterizes on the main thread.
 //!
 //! The compile path is ESSL source, then an AST, then self-authored bytecode,
 //! then a CPU interpreter. There is no machine-code JIT. Instruction spans and
@@ -24,6 +25,7 @@
 mod clip;
 mod essl;
 mod framebuffer;
+mod present;
 mod raster;
 mod vm;
 
@@ -36,6 +38,7 @@ pub use essl::{
     parse_essl_subset,
 };
 pub use framebuffer::{ContextError, DemoContext, Rgba8};
+pub use present::{DoubleBuffer, PresentError, render_essl_demo};
 pub use raster::{
     P0_MILESTONE_CLEAR, RasterError, ScreenTriangle, ScreenVertex, ShaderDrawError,
     ShaderTriangleDraw, p0_milestone_clip_vertices, p0_milestone_triangle,
@@ -56,7 +59,7 @@ pub const CONFORMANCE_BANNER: &str = "webgl-mock — NOT WEBGL CONFORMANT";
 pub const WEBGL_MOCK: &str = "webgl-mock is a WebGL2-style visualization running on the CPU. It is not native WebGL and not native WebGPU.";
 
 /// Target thread split versus the demo page today.
-pub const THREADING: &str = "Decided 2026-10-28: double-buffered SharedArrayBuffer. Front slot is for main-thread Canvas 2D present. Back slot is for Worker raster and is the logical drawing buffer; the Wasm view maps onto that slot. Handoff uses Atomics for the frame index and which slot is readable. Do not transfer away the sole buffer. Do not keep an extra full-frame framebuffer copied into the SharedArrayBuffer each frame, except later for an offscreen FBO or a non-present size. Triple buffering is not the default and is only for measured present stalls. A zero-copy transfer of a duplicate snapshot is not the primary path. There is no OffscreenCanvas blit. The pipeline does not draw to the visible page canvas. Messaging of pixel payloads is not a copied postMessage. The back slot is authoritative for raster results, framebuffer hash, unit tests, and pixel debugging. Current demo: single-threaded Wasm on the main thread, then Canvas 2D putImageData onto the page canvas. The Worker backend is not built yet.";
+pub const THREADING: &str = "Decided 2026-10-28: double-buffered SharedArrayBuffer. Front slot is for main-thread Canvas 2D present. Back slot is for Worker raster and is the logical drawing buffer; the Wasm view maps onto that slot. Handoff uses Atomics for the frame index and which slot is readable. Do not transfer away the sole buffer. Do not keep an extra full-frame framebuffer copied into the SharedArrayBuffer each frame, except later for an offscreen FBO or a non-present size. Triple buffering is not the default and is only for measured present stalls. A zero-copy transfer of a duplicate snapshot is not the primary path. There is no OffscreenCanvas blit. The pipeline does not draw to the visible page canvas. Messaging of pixel payloads is not a copied postMessage. The back slot is authoritative for raster results, framebuffer hash, unit tests, and pixel debugging. The worker kernel is glgpu-webgl-worker. Commands are bytes in the same SharedArrayBuffer plus an Atomics sequence. When SharedArrayBuffer is available the demo draws in that worker and presents the front slot. Otherwise the same raster stays on the main thread.";
 
 /// Lowering and execution shape. JIT is intentionally absent.
 pub const COMPILE_PATH: &str =
@@ -278,7 +281,9 @@ mod tests {
         assert!(THREADING.contains("There is no OffscreenCanvas blit"));
         assert!(THREADING.contains("authoritative"));
         assert!(THREADING.contains("not a copied postMessage"));
-        assert!(THREADING.contains("Worker backend is not built yet"));
+        assert!(THREADING.contains("glgpu-webgl-worker"));
+        assert!(THREADING.contains("Otherwise the same raster stays on the main thread"));
+        assert!(!THREADING.contains("Worker backend is not built yet"));
         assert!(!THREADING.contains("Scheme C"));
         assert!(COMPILE_PATH.contains("CPU interpreter"));
         assert!(COMPILE_PATH.contains("no machine-code JIT"));

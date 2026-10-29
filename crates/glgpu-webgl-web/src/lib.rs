@@ -5,11 +5,10 @@
 //! `getContext("webgl")`, `getContext("webgl2")`, or `navigator.gpu`, and it
 //! does not link the webgpu-mock crates.
 //!
-//! Current state: single-threaded Wasm on the main thread. `putImageData`
-//! copies the frame onto the page canvas. The target is one double-buffered
-//! SharedArrayBuffer: the back slot is the drawing buffer, and Atomics hand the
-//! front slot to this main thread for Canvas 2D. There is no OffscreenCanvas
-//! blit. This page does not start that worker.
+//! When `SharedArrayBuffer` is available, the page queues ESSL into the worker
+//! buffer and presents the front slot from JavaScript. This module then copies
+//! that front slot into the inspector. Without a shared buffer, the same
+//! raster runs on the main thread. There is no OffscreenCanvas.
 //!
 //! The permanent banner stays `webgl-mock — NOT WEBGL CONFORMANT`.
 
@@ -59,6 +58,23 @@ mod app {
         essl_summary: String,
     }
 
+    fn queue_worker_frame(source: &str) -> bool {
+        let Some(window) = web_sys::window() else {
+            return false;
+        };
+        let Ok(value) = js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("glgpuQueueEssl"))
+        else {
+            return false;
+        };
+        let Ok(func) = value.dyn_into::<js_sys::Function>() else {
+            return false;
+        };
+        func.call1(&JsValue::NULL, &JsValue::from_str(source))
+            .ok()
+            .and_then(|queued| queued.as_bool())
+            .unwrap_or(false)
+    }
+
     impl DemoState {
         fn compile_editor(&mut self, run_after_compile: bool) -> Result<bool, JsValue> {
             let source = self.editor.value();
@@ -77,22 +93,43 @@ mod app {
 
             if run_after_compile {
                 let started = js_sys::Date::now();
-                match editor::render_preview(&source) {
-                    Ok(context) => {
-                        self.context = context;
-                        self.show_success(&source, &compiled.functions, true)?;
-                        self.present(started)?;
-                        self.show_selected_pixel();
-                    }
-                    Err(diagnostic) => {
-                        self.show_run_error(&source, &diagnostic.message);
-                        return Ok(false);
+                if queue_worker_frame(&source) {
+                    self.show_success(&source, &compiled.functions, true)?;
+                    self.metrics.set_text_content(Some(
+                        "worker raster · command bytes are in the shared buffer",
+                    ));
+                } else {
+                    match editor::render_preview(&source) {
+                        Ok(context) => {
+                            self.context = context;
+                            self.show_success(&source, &compiled.functions, true)?;
+                            self.present(started)?;
+                            self.show_selected_pixel();
+                        }
+                        Err(diagnostic) => {
+                            self.show_run_error(&source, &diagnostic.message);
+                            return Ok(false);
+                        }
                     }
                 }
             } else {
                 self.show_success(&source, &compiled.functions, false)?;
             }
             Ok(true)
+        }
+
+        fn note_worker_frame(&mut self, pixels: &[u8]) {
+            if !self.context.copy_from_rgba8_bytes(pixels) {
+                return;
+            }
+            self.frame_serial = self.frame_serial.saturating_add(1);
+            self.metrics.set_text_content(Some(&format!(
+                "frame {} · worker front slot · hash {:016x} · CPU interpreter · {}",
+                self.frame_serial,
+                self.context.stable_hash64(),
+                self.essl_summary,
+            )));
+            self.show_selected_pixel();
         }
 
         fn present(&mut self, started: f64) -> Result<(), JsValue> {
@@ -506,6 +543,7 @@ mod app {
             frame_serial: 0,
             essl_summary: "ESSL not compiled".to_owned(),
         }));
+        install_present_hooks(&state);
         {
             let mut state = state.borrow_mut();
             if !state.compile_editor(true)? {
@@ -632,6 +670,43 @@ mod app {
         Ok(())
     }
 
+    fn install_present_hooks(state: &Rc<RefCell<DemoState>>) {
+        let window = web_sys::window().expect("window");
+        let presented = Rc::clone(state);
+        let on_frame = Closure::<dyn FnMut(JsValue, JsValue)>::new(
+            move |_message: JsValue, pixels: JsValue| {
+                if pixels.is_null() || pixels.is_undefined() {
+                    return;
+                }
+                let array = js_sys::Uint8Array::new(&pixels);
+                let mut bytes = vec![0_u8; array.length() as usize];
+                array.copy_to(&mut bytes);
+                presented.borrow_mut().note_worker_frame(&bytes);
+            },
+        );
+        js_sys::Reflect::set(
+            window.as_ref(),
+            &JsValue::from_str("glgpuOnPresentedFrame"),
+            on_frame.as_ref(),
+        )
+        .ok();
+        on_frame.forget();
+
+        let replay = Rc::clone(state);
+        let on_replay = Closure::<dyn FnMut()>::new(move || {
+            if let Err(error) = replay.borrow_mut().compile_editor(true) {
+                web_sys::console::error_1(&error);
+            }
+        });
+        js_sys::Reflect::set(
+            window.as_ref(),
+            &JsValue::from_str("glgpuReplayLocal"),
+            on_replay.as_ref(),
+        )
+        .ok();
+        on_replay.forget();
+    }
+
     fn capability_text(window: &web_sys::Window) -> String {
         let isolated =
             js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("crossOriginIsolated"))
@@ -642,7 +717,7 @@ mod app {
             js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("SharedArrayBuffer"))
                 .unwrap_or(false);
         format!(
-            "stack=webgl-mock · thread=main · present=canvas2d · build=ST · backend=cpu-from-scratch · crossOriginIsolated={} · SharedArrayBuffer={} · logical CPUs={}",
+            "stack=webgl-mock · present=canvas2d · backend=cpu-from-scratch · crossOriginIsolated={} · SharedArrayBuffer={} · logical CPUs={}",
             isolated,
             has_shared_array_buffer,
             window.navigator().hardware_concurrency(),

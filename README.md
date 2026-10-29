@@ -4,9 +4,9 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 
 webgl-mock 与 webgpu-mock 是对等的两条 CPU 实现，不是主从。原生 WebGL / 原生 WebGPU 只计划放在 demo 层做并排对照；这是未来的设计，目前仓库里没有这两页。webgpu-mock 使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。
 
-这是现有设计，代码中已经这样做：webgpu-mock 把三角形画进 CPU framebuffer，再经 Canvas 2D `putImageData` 交到页面 canvas；标识是 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。webgl-mock 的三角形 demo 用 `DemoContext` 里的 `Vec<Rgba8>`，在主线程 Wasm 里光栅，再 `putImageData` 交到页面 canvas。页面不用原生 WebGL / WebGPU，也不用 OffscreenCanvas。
+这是现有设计，代码中已经这样做：页面跨源隔离时，webgl-mock 与 webgpu-mock 的绘制在 Worker + Wasm 里。一块 SharedArrayBuffer 放命令字节和两个像素槽。back 槽是逻辑绘制缓冲，front 槽由主线程 Canvas 2D `putImageData` 呈现，交接用 Atomics。不使用 OffscreenCanvas，也没有三缓冲。未隔离时两条 demo 仍在主线程光栅再 `putImageData`。`?threads=1` 仍是 webgpu-mock 的主线程 owner queue 加 Rayon tile。标识仍是 `CpuGpuSubset — NOT WEBGPU CONFORMANT` 与 `webgl-mock — NOT WEBGL CONFORMANT`。
 
-这是未来的设计，目前还未实现：Worker + Wasm 后端、SharedArrayBuffer 双缓冲（back 槽是逻辑绘制缓冲，front 槽给主线程呈现，Atomics 交接）、主线程 Web API façade。不使用 OffscreenCanvas，三缓冲不是默认。目前没有这条 Worker 后端。WebGL 产品实现仍等到公共渲染内核、shader 执行和调试模型稳定之后。页面上的三角形是 demo。
+这是未来的设计，目前还未实现：demo 层的原生 WebGL / 原生 WebGPU 对照页，以及 webgl-mock 的 `drawArrays`。完整的 JavaScript WebGL / WebGPU façade 也还没有。页面上的三角形是 demo。
 
 > 当前状态：**P0 垂直切片已可运行，但项目不符合 WebGPU 标准，也不是 `navigator.gpu` 的替代实现。**
 
@@ -51,6 +51,9 @@ cargo xtask build-web-mt
 # webgl-mock demo 页的独立 Wasm 包（不进入 webgpu-mock 的 ST/MT 包）
 cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
 
+# 两条 mock 的 Worker 呈现包（共享内存；需要 nightly-2025-11-15 与 rust-src）
+cargo xtask build-present-workers
+
 # 带跨源隔离响应头的本地服务器
 cargo xtask serve
 ```
@@ -59,11 +62,11 @@ cargo xtask serve
 
 - webgpu-mock ST：`http://127.0.0.1:8080/`
 - webgpu-mock MT：`http://127.0.0.1:8080/?threads=1`
-- webgl-mock demo 页：`http://127.0.0.1:8080/webgl.html`（需先构建 `web/pkg-webgl`；当前是主线程单线程 Wasm）
+- webgl-mock demo 页：`http://127.0.0.1:8080/webgl.html`（需先构建 `web/pkg-webgl` 和 `web/pkg-webgl-worker`。本地服务器带隔离头，绘制走 Worker；没有 SharedArrayBuffer 时退回主线程）
 
 ## GitHub Pages
 
-推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 webgpu-mock ST、webgpu-mock MT 和 webgl-mock demo 页三个包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
+推送到 `main` 的 [pages workflow](.github/workflows/pages.yml) 会构建 webgpu-mock ST、webgpu-mock MT、webgl-mock demo 页，以及两个 present worker 包，并把 `web/` 发布到 GitHub Pages。本仓库的项目站点是：
 
 ```text
 https://Lethe-HJ.github.io/glgpu/
@@ -71,8 +74,8 @@ https://Lethe-HJ.github.io/glgpu/
 
 启用一次：仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。首次如果部署作业提示 Pages 尚未启用，保存该设置后重跑 `pages` workflow。
 
-- `/` 启动 webgpu-mock ST，不注册 service worker。顶栏的 WebGL 链到 `webgl.html`，点击后整页重载。
-- `/webgl.html` 启动独立的 webgl-mock demo 页 Wasm，当前跑在主线程。它不加载 webgpu-mock 包，也不注册 `coop-coep.js`。
+- `/` 启动 webgpu-mock。页面已经跨源隔离且没有 `?threads=1` 时，绘制在 `webgpu-worker`，页面 canvas 只呈现 front 槽。顶栏的 WebGL 链到 `webgl.html`，点击后整页重载。
+- `/webgl.html` 启动 webgl-mock 的编辑器包。隔离环境下光栅在 `webgl-worker`。它不加载 webgpu-mock 包，也不注册 `coop-coep.js`。GitHub Pages 默认没有隔离头，这一页会退回主线程绘制。
 - `/?threads=1` 请求 WebGPU MT。GitHub Pages 不能配置自定义响应头，因此这个入口用同源 [`web/coop-coep.js`](web/coop-coep.js) 补上与 `cargo xtask serve` 相同的 `COOP: same-origin` 和 `COEP: require-corp`，然后自动刷新一次。
 - 浏览器不接受 service worker 合成的隔离头时，现有 loader 回退到 ST。硬刷新会绕过 service worker，可能再刷新一次。
 - 页面使用相对 URL。`index.html` 与 `webgl.html` 在本地 `/` 和项目站点 `/glgpu/` 下都能解析。WebGL 页是 `https://Lethe-HJ.github.io/glgpu/webgl.html`。不要加 `<base>`。
@@ -146,7 +149,7 @@ MT framebuffer 位于 SharedArrayBuffer-backed Wasm 内存中，而 `ImageData` 
 
 下一里程碑是项目自有 shader IR/字节码与 WGSL lowering，使 vertex/fragment shader 真正在 CPU 上执行；随后再加入资源模型、render pipeline、buffer、bind group、texture/sampler 和版本化 capture schema。异步 owner-worker queue 与 compute 是独立 gate，不会用当前同步 queue 冒充标准语义。
 
-webgl-mock 与 webgpu-mock 对等，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里用 CPU 实现模拟 WebGL，不依赖 webgpu-mock 的 crate，也不把原生 WebGL 当作自己的绘制后端。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。`/webgl.html` 当前用主线程上的单线程 Wasm 编辑并运行这个 demo，再用 Canvas 2D `putImageData` 直接交到页面 canvas。这是未来的设计，目前还未实现：SharedArrayBuffer 双缓冲加 Atomics，back 槽是逻辑绘制缓冲，主线程呈现 front 槽；也不使用 OffscreenCanvas。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。`CpuGpuSubset — NOT WEBGPU CONFORMANT` 同样保留。原生对照页还没有。
+webgl-mock 与 webgpu-mock 对等，见 [webgl-mock](docs/webgl-mock.zh-CN.md) 和 [ADR 0003](docs/adr/0003-parallel-webgl-mock.md)。它在 `glgpu-webgl` 里用 CPU 实现模拟 WebGL，不依赖 webgpu-mock 的 crate，也不把原生 WebGL 当作自己的绘制后端。当前子集是 clear、WebGL clip 体积 `-w..w`、左下窗口，以及由 CPU 解释器输出驱动的三角形 demo。隔离的 `/webgl.html` 把 ESSL 命令交给 Worker，再呈现 front 槽。没有 SharedArrayBuffer 时仍在主线程 `putImageData`。`drawArrays` 仍是 `NotStarted`。不使用 OffscreenCanvas。Framebuffer 第 0 行仍是过渡的图像上方。标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。`CpuGpuSubset — NOT WEBGPU CONFORMANT` 同样保留。原生对照页还没有。
 
 ## 许可证状态
 

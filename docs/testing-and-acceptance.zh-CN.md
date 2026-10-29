@@ -124,6 +124,7 @@ cargo test -p glgpu-webgpu --features parallel
 cargo xtask build-web --release
 cargo xtask build-web-mt
 cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
+cargo xtask build-present-workers
 ```
 
 预期产物：
@@ -135,9 +136,13 @@ web/pkg-mt/glgpu_web.js
 web/pkg-mt/glgpu_web_bg.wasm
 web/pkg-webgl/glgpu_webgl_web.js
 web/pkg-webgl/glgpu_webgl_web_bg.wasm
+web/pkg-webgl-worker/glgpu_webgl_worker.js
+web/pkg-webgl-worker/glgpu_webgl_worker_bg.wasm
+web/pkg-webgpu-worker/glgpu_webgpu_worker.js
+web/pkg-webgpu-worker/glgpu_webgpu_worker_bg.wasm
 ```
 
-`pkg-webgl` 是 webgl-mock demo 页的独立 ST 包。它在主线程运行，不参与 webgpu-mock 的 ST/MT hash 对比。
+`pkg-webgl` 是 webgl-mock 的编辑器壳，不参与 webgpu-mock 的 ST/MT hash 对比。隔离页面另加载 `pkg-webgl-worker`。没有 SharedArrayBuffer 时壳自己在主线程光栅。`node web/smoke-present.mjs` 检查两个 worker 的共享内存和 front 槽像素；它要在 `build-present-workers` 之后运行。
 
 `build-web-mt` 是无参数的锁定命令；传入 `--release` 或其他覆盖参数应失败。它必须使用：
 

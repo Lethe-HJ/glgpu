@@ -94,7 +94,7 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 - **webgl-mock / 模拟 WebGL**：CPU 上的 WebGL2 风格实现。入口 `WebGlMock`，三角形页面是 demo，上下文是 `DemoContext`。标识 `webgl-mock — NOT WEBGL CONFORMANT`。
 - **webgpu-mock / 模拟 WebGPU**：CPU 上的 WebGPU 风格实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
 - **原生 WebGL / 原生 WebGPU**：只在 demo 层做并排对照。这是未来的设计，目前还未实现。不是 mock crate 的绘制后端。
-- **呈现（2026-10-28 已决定，未来）**：这是未来的设计，目前还未实现。一块 SharedArrayBuffer 双缓冲。front 给主线程 Canvas 2D 呈现，back 给 Worker 光栅，交接用 Atomics。逻辑绘制缓冲就是可写的 back 槽。三缓冲不是默认。不使用 OffscreenCanvas。目前 webgl-mock 用主线程上的 `DemoContext`（`Vec<Rgba8>`）再 `putImageData`；webgpu-mock 用 CPU framebuffer 再 `putImageData`。
+- **呈现（2026-10-28 已决定，demo 页已落地）**：这是现有设计，代码中已实现。一块 SharedArrayBuffer 双缓冲。front 给主线程 Canvas 2D 呈现，back 给 Worker 光栅，交接用 Atomics。webgl-mock 的逻辑绘制缓冲就是 back 槽。三缓冲不是默认。不使用 OffscreenCanvas。未隔离时 webgl-mock 仍用主线程上的 `DemoContext` 再 `putImageData`；webgpu-mock 的 `?threads=1` 仍用 CPU framebuffer 再 `putImageData`。
 - **P0 垂直切片**：当前可运行的 CPU triangle → framebuffer → Canvas2D 与最小像素追踪，不代表完整 P0 风险验证已经结束。
 - **ST**：stable toolchain 构建的非共享内存单线程 Wasm 包。
 - **MT**：固定 nightly、重建标准库、SharedArrayBuffer 和 `wasm-bindgen-rayon` 的多线程 Wasm 包。

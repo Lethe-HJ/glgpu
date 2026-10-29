@@ -2,12 +2,13 @@
 //!
 //! This is not native WebGPU. The page contract stays
 //! `CpuGpuSubset — NOT WEBGPU CONFORMANT`. The triangle on the page is a demo.
-//! Today the P0 subset runs in Wasm on the main owner thread and `putImageData`
-//! copies the frame onto the page canvas. Rayon workers, when the MT package is
-//! loaded, only run tile kernels. The target present path is one
-//! double-buffered SharedArrayBuffer. The back slot is the drawing buffer, and
-//! Atomics hand the front slot to this main thread for Canvas 2D. There is no
-//! OffscreenCanvas blit. This page does not implement that split yet.
+//! `?threads=1` still runs the P0 subset on the main owner thread. Rayon
+//! workers in that package only run tile kernels, then `putImageData` copies
+//! the frame. Without that flag, and when `SharedArrayBuffer` exists, the
+//! triangle is submitted in `glgpu-webgpu-worker`. Packed color is written into
+//! the back slot; this page's JavaScript presents the front slot. Depth stays
+//! in the worker device framebuffer. There is no OffscreenCanvas blit. Without
+//! a shared buffer the same submit stays on the main thread.
 
 #![forbid(unsafe_code)]
 
@@ -442,6 +443,13 @@ mod app {
 
     impl DemoState {
         fn render(&mut self, selected: PixelCoord) -> Result<(), JsValue> {
+            if self.queue_worker(selected) {
+                self.selected = selected;
+                self.metrics.set_text_content(Some(
+                    "worker raster · triangle command is in the shared buffer",
+                ));
+                return Ok(());
+            }
             let started = js_sys::Date::now();
             let vertices = self.preview_vertices();
             let mut encoder = self.device.create_command_encoder();
@@ -516,6 +524,50 @@ mod app {
             self.pixel_history.set_text_content(Some(&text));
             self.selected = selected;
             Ok(())
+        }
+
+        fn queue_worker(&self, selected: PixelCoord) -> bool {
+            let Some(window) = web_sys::window() else {
+                return false;
+            };
+            let Ok(value) =
+                js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("glgpuQueueTriangle"))
+            else {
+                return false;
+            };
+            let Ok(func) = value.dyn_into::<js_sys::Function>() else {
+                return false;
+            };
+            let vertices = self.preview_vertices();
+            let mut coords = [0_f32; 21];
+            for (index, vertex) in vertices.iter().enumerate() {
+                let base = index * 7;
+                coords[base] = vertex.x;
+                coords[base + 1] = vertex.y;
+                coords[base + 2] = vertex.depth;
+                coords[base + 3] = f32::from(vertex.color.r);
+                coords[base + 4] = f32::from(vertex.color.g);
+                coords[base + 5] = f32::from(vertex.color.b);
+                coords[base + 6] = f32::from(vertex.color.a);
+            }
+            let array = js_sys::Float32Array::from(coords.as_slice());
+            func.call3(
+                &JsValue::NULL,
+                &array,
+                &JsValue::from_f64(f64::from(selected.x)),
+                &JsValue::from_f64(f64::from(selected.y)),
+            )
+            .ok()
+            .and_then(|queued| queued.as_bool())
+            .unwrap_or(false)
+        }
+
+        fn apply_worker_frame(&mut self, serial: f64, hash: &str, history: &str) {
+            self.metrics.set_text_content(Some(&format!(
+                "submit #{serial:.0} · worker front slot · hash {hash} · sequential worker · {}",
+                self.wgsl_summary,
+            )));
+            self.pixel_history.set_text_content(Some(history));
         }
 
         fn preview_vertices(&self) -> [ScreenVertex; 3] {
@@ -974,6 +1026,7 @@ mod app {
             parallel,
             wgsl_summary: "WGSL not compiled".to_owned(),
         }));
+        install_present_hooks(&state);
         state.borrow_mut().compile_editor(true)?;
 
         let input_state = Rc::clone(&state);
@@ -1092,6 +1145,52 @@ mod app {
         reset_trace_click.forget();
 
         Ok(())
+    }
+
+    fn install_present_hooks(state: &Rc<RefCell<DemoState>>) {
+        let window = web_sys::window().expect("window");
+        let presented = Rc::clone(state);
+        let on_frame = Closure::<dyn FnMut(JsValue, JsValue)>::new(
+            move |message: JsValue, _pixels: JsValue| {
+                let serial = js_sys::Reflect::get(&message, &JsValue::from_str("serial"))
+                    .ok()
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0);
+                let hash = js_sys::Reflect::get(&message, &JsValue::from_str("hash"))
+                    .ok()
+                    .and_then(|value| value.as_string())
+                    .unwrap_or_default();
+                let history = js_sys::Reflect::get(&message, &JsValue::from_str("history"))
+                    .ok()
+                    .and_then(|value| value.as_string())
+                    .unwrap_or_default();
+                presented
+                    .borrow_mut()
+                    .apply_worker_frame(serial, &hash, &history);
+            },
+        );
+        js_sys::Reflect::set(
+            window.as_ref(),
+            &JsValue::from_str("glgpuOnPresentedFrame"),
+            on_frame.as_ref(),
+        )
+        .ok();
+        on_frame.forget();
+
+        let replay = Rc::clone(state);
+        let on_replay = Closure::<dyn FnMut()>::new(move || {
+            let selected = replay.borrow().selected;
+            if let Err(error) = replay.borrow_mut().render(selected) {
+                web_sys::console::error_1(&error);
+            }
+        });
+        js_sys::Reflect::set(
+            window.as_ref(),
+            &JsValue::from_str("glgpuReplayLocal"),
+            on_replay.as_ref(),
+        )
+        .ok();
+        on_replay.forget();
     }
 
     fn capability_text(window: &web_sys::Window, parallel: bool) -> String {
