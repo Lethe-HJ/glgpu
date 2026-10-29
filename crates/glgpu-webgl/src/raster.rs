@@ -1,10 +1,10 @@
-//! Triangle rasterizer for the WebGL2 learning track.
+//! Triangle rasterizer for webgl-mock demos.
 //!
-//! [`LearningContext::draw_screen_space_triangle`] takes vertices that are
+//! [`DemoContext::draw_screen_space_triangle`] takes vertices that are
 //! already in storage pixels. Storage y grows downward from the top image row.
-//! [`LearningContext::draw_clip_space_triangle`] applies the WebGL clip volume
+//! [`DemoContext::draw_clip_space_triangle`] applies the WebGL clip volume
 //! `-w <= x, y, z <= w` and a bottom-left window, then writes that same
-//! storage. [`LearningContext::draw_shader_triangle`] fills the clip vertices
+//! storage. [`DemoContext::draw_shader_triangle`] fills the clip vertices
 //! from interpreter outputs. Coverage uses sample centers and barycentric
 //! weights. There is no depth test, no `drawArrays`, and no shared raster crate.
 
@@ -15,10 +15,10 @@ use crate::clip::{
     ClipError, ClipOutcome, ClipPosition, ClipVertex, WindowVertex, clip_triangle, project_window,
     storage_y_from_window_y,
 };
-use crate::framebuffer::{LearningContext, Rgba8};
+use crate::framebuffer::{DemoContext, Rgba8};
 use crate::vm::{BytecodeModule, ExecTrace, VmError, execute_bound};
 
-/// One corner of a learning triangle.
+/// One corner of a demo triangle.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScreenVertex {
     pub x: f32,
@@ -32,7 +32,7 @@ pub struct ScreenTriangle {
     pub vertices: [ScreenVertex; 3],
 }
 
-/// Vertex-shader outputs read by [`LearningContext::draw_shader_triangle`].
+/// Vertex-shader outputs read by [`DemoContext::draw_shader_triangle`].
 ///
 /// The subset has no `vec4` and no `gl_Position`. These scalar names stand in
 /// for clip position and the color varying.
@@ -69,7 +69,7 @@ impl fmt::Display for RasterError {
             Self::CoordinateOutOfRange => {
                 write!(
                     f,
-                    "screen-space vertex is outside the learning coordinate range"
+                    "screen-space vertex is outside the framebuffer coordinate range"
                 )
             }
             Self::DegenerateTriangle => write!(f, "screen-space triangle has zero area"),
@@ -143,7 +143,7 @@ impl Error for RasterError {}
 /// Clip-space vertices for the P0 demo triangle.
 ///
 /// `z = 0` and `w = 1`, so the positions match the demo's NDC xy. The near
-/// plane of this track is still `z = -w`, not WebGPU's `z = 0`.
+/// plane of this stack is still `z = -w`, not WebGPU's `z = 0`.
 pub fn p0_milestone_clip_vertices() -> [ClipVertex; 3] {
     std::array::from_fn(|index| {
         let [x, y] = P0_MILESTONE_NDC[index];
@@ -177,7 +177,7 @@ pub fn p0_milestone_triangle(width: u32, height: u32) -> ScreenTriangle {
     }
 }
 
-impl LearningContext {
+impl DemoContext {
     /// Draw a triangle whose vertices are already in storage pixels.
     ///
     /// Storage y grows downward from the top image row. This is not WebGL
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn clear_and_triangle_cover_the_sample_center() {
-        let mut context = LearningContext::new(8, 8).expect("extent");
+        let mut context = DemoContext::new(8, 8).expect("extent");
         let clear = Rgba8::new(1, 2, 3, 255);
         context.clear(clear);
         context
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn p0_milestone_triangle_paints_the_interior_and_leaves_the_corner() {
-        let mut context = LearningContext::new(720, 480).expect("extent");
+        let mut context = DemoContext::new(720, 480).expect("extent");
         context.clear(P0_MILESTONE_CLEAR);
         let triangle = p0_milestone_triangle(720, 480);
         context
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn degenerate_and_non_finite_triangles_are_rejected() {
-        let mut context = LearningContext::new(4, 4).expect("extent");
+        let mut context = DemoContext::new(4, 4).expect("extent");
         let color = Rgba8::new(9, 9, 9, 255);
         let degenerate = context.draw_screen_space_triangle(ScreenTriangle {
             vertices: [
@@ -484,7 +484,7 @@ mod tests {
     #[test]
     fn positive_clip_y_is_the_top_of_storage_and_negative_clip_y_is_the_bottom() {
         let clear = Rgba8::new(9, 9, 9, 255);
-        let mut top = LearningContext::new(16, 16).expect("extent");
+        let mut top = DemoContext::new(16, 16).expect("extent");
         top.clear(clear);
         let window = top
             .draw_clip_space_triangle([
@@ -497,7 +497,7 @@ mod tests {
         assert_ne!(top.pixel(8, 1), Some(clear));
         assert_eq!(top.pixel(8, 14), Some(clear));
 
-        let mut bottom = LearningContext::new(16, 16).expect("extent");
+        let mut bottom = DemoContext::new(16, 16).expect("extent");
         bottom.clear(clear);
         let window = bottom
             .draw_clip_space_triangle([
@@ -522,7 +522,7 @@ mod tests {
             ]
         };
 
-        let mut inside = LearningContext::new(8, 8).expect("extent");
+        let mut inside = DemoContext::new(8, 8).expect("extent");
         inside.clear(clear);
         let window = inside
             .draw_clip_space_triangle(covering(-0.5))
@@ -534,7 +534,7 @@ mod tests {
         );
         assert_ne!(inside.pixel(4, 4), Some(clear));
 
-        let mut boundary = LearningContext::new(8, 8).expect("extent");
+        let mut boundary = DemoContext::new(8, 8).expect("extent");
         boundary.clear(clear);
         let window = boundary
             .draw_clip_space_triangle(covering(-1.0))
@@ -547,7 +547,7 @@ mod tests {
         assert_ne!(boundary.pixel(4, 4), Some(clear));
 
         for z in [-1.5, 1.5] {
-            let mut outside = LearningContext::new(8, 8).expect("extent");
+            let mut outside = DemoContext::new(8, 8).expect("extent");
             outside.clear(clear);
             let window = outside
                 .draw_clip_space_triangle(covering(z))
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn a_vertex_beyond_the_near_plane_is_clipped_and_the_inside_part_remains() {
-        let mut context = LearningContext::new(32, 32).expect("extent");
+        let mut context = DemoContext::new(32, 32).expect("extent");
         let clear = Rgba8::new(1, 1, 1, 255);
         context.clear(clear);
         let window = context
@@ -597,8 +597,8 @@ mod tests {
         });
         let vertices = [&bindings[0][..], &bindings[1][..], &bindings[2][..]];
 
-        let mut shaded = LearningContext::new(720, 480).expect("extent");
-        let mut direct = LearningContext::new(720, 480).expect("extent");
+        let mut shaded = DemoContext::new(720, 480).expect("extent");
+        let mut direct = DemoContext::new(720, 480).expect("extent");
         shaded.clear(P0_MILESTONE_CLEAR);
         direct.clear(P0_MILESTONE_CLEAR);
         direct
@@ -616,7 +616,7 @@ mod tests {
             }
         }
 
-        let mut scaled_target = LearningContext::new(720, 480).expect("extent");
+        let mut scaled_target = DemoContext::new(720, 480).expect("extent");
         scaled_target.clear(P0_MILESTONE_CLEAR);
         let scaled = scaled_target
             .draw_shader_triangle(&module, "main", &[("u_scale", 0.5)], vertices)
@@ -627,7 +627,7 @@ mod tests {
         );
         assert_ne!(scaled_target.pixel(360, 80), direct.pixel(360, 80));
 
-        let mut rejected = LearningContext::new(8, 8).expect("extent");
+        let mut rejected = DemoContext::new(8, 8).expect("extent");
         rejected.clear(P0_MILESTONE_CLEAR);
         let mut outside = bindings;
         outside[0][2].1 = -2.0;

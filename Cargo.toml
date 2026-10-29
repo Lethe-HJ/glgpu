@@ -8,6 +8,8 @@ members = [
     "crates/glgpu-webgpu",
     "crates/glgpu-webgl",
     "crates/glgpu-webgl-web",
+    "crates/glgpu-webgl-worker",
+    "crates/glgpu-webgpu-worker",
     "crates/glgpu-canvas2d",
     "crates/glgpu-web",
     "xtask",
@@ -20,6 +22,8 @@ default-members = [
     "crates/glgpu-webgpu",
     "crates/glgpu-webgl",
     "crates/glgpu-webgl-web",
+    "crates/glgpu-webgl-worker",
+    "crates/glgpu-webgpu-worker",
 ]
 
 [workspace.package]

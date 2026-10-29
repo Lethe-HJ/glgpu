@@ -1,24 +1,26 @@
 [profile]
-name = "CpuWebGl2LearningTrack"
+name = "webgl-mock"
 schema_version = 1
 standard = false
 conformant = false
-implementation = "learning-slice"
-goal = "pure CPU from-scratch WebGL2-style stack for learning"
+implementation = "webgl-mock"
+goal = "webgl-mock: WebGL2-style visualization running on the CPU; not native WebGL"
 backend = "cpu-from-scratch"
 separate_from_webgpu_crates = true
-presentation = "debug shell copies RGBA8 with Canvas 2D putImageData; LearningContext has no present method"
-api_surface = "Rust-native learning slice inside glgpu-webgl; debug page is crates/glgpu-webgl-web"
+presentation = "when SharedArrayBuffer exists, the worker back slot is presented by copying the front slot into ImageData. DemoContext has no present method. Without SharedArrayBuffer the page still copies RGBA8 on the main thread. No OffscreenCanvas. Triple buffering is not implemented"
+api_surface = "webgl-mock inside glgpu-webgl; the triangle page is a demo in crates/glgpu-webgl-web"
+threading_target = "decided 2026-10-28: one SharedArrayBuffer, double buffered. Back slot is the authoritative drawing buffer. Front slot is for main-thread Canvas 2D putImageData / ImageData. Handoff uses Atomics. Do not transfer away the sole buffer. Triple buffering is not the default. No OffscreenCanvas. No copied postMessage of pixel payloads"
+threading_current = "glgpu-webgl-worker owns the double-buffered slots when SharedArrayBuffer exists; otherwise single-threaded Wasm on the main thread. drawArrays is not started"
 product_phase = "P7a+ remains the production gate; this file does not move it"
-banner = "CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT"
+banner = "webgl-mock — NOT WEBGL CONFORMANT"
 host_webgl = false
 host_webgpu = false
 navigator_gpu = false
 webgl_rendering_context = false
 jit = false
 compile_path = "ESSL source -> AST -> self-authored bytecode IR -> CPU interpreter"
-document = "docs/webgl2-learning-track.zh-CN.md"
-decision = "docs/adr/0003-parallel-webgl2-learning-track.md"
+document = "docs/webgl-mock.zh-CN.md"
+decision = "docs/adr/0003-parallel-webgl-mock.md"
 
 [baseline]
 webgl = "Khronos WebGL 2.0.0, 11 April 2017"
@@ -33,12 +35,12 @@ naga_is_essl_frontend = false
 
 [implemented]
 api = [
-    "RGBA8 clear of the CPU learning framebuffer",
+    "RGBA8 clear of the CPU framebuffer",
 ]
 
 [partial]
 api = [
-    "CPU learning context that owns an RGBA8 framebuffer and is not a WebGL2RenderingContext",
+    "CPU demo context that owns an RGBA8 framebuffer and is not a WebGL2RenderingContext",
     "WebGL clip volume -w <= x, y, z <= w, including a triangle that crosses one clip plane",
     "bottom-left window coordinates after the perspective divide",
     "one triangle whose clip position and color come from CPU interpreter outputs",
@@ -78,8 +80,8 @@ api = [
 ]
 
 [notes]
-scope = "Learning slice inside glgpu-webgl. Partial rows are not WebGL entry points. drawArrays is not started."
-debug_page = "web/webgl.html reloads a separate Wasm package. It is not a WebGLRenderingContext and does not move explicit present, drawArrays, or the JavaScript facade out of not_started."
+scope = "webgl-mock inside glgpu-webgl. The triangle page is a demo. Partial rows are not native WebGL entry points. drawArrays is not started."
+debug_page = "web/webgl.html loads the editor package and, when isolated, web/webgl-worker.js. The page canvas only presents. It is not a native WebGLRenderingContext. OffscreenCanvas is not part of the present design. drawArrays and a full JavaScript WebGL facade stay not_started."
 essl = "Do not treat Naga's desktop GLSL frontend as ESSL 3.00. glslang 16.6.0 is the accept/reject reference and is not invoked yet."
 coordinates = "Window space is bottom-left and clip Z is -w..w. Stored row 0 is still the top image row."
 debugger = "Instruction spans, per-step local snapshots, and per-step uniform/input/output values are the debugger hook. There is no pause control or UI."

@@ -1,4 +1,4 @@
-//! Subset lexer and parser for the WebGL2 learning track.
+//! Subset lexer and parser for webgl-mock.
 //!
 //! The accepted grammar is intentionally small. Khronos glslang remains the
 //! accept/reject reference for real ESSL 3.00; this parser does not call it,
@@ -109,7 +109,7 @@ pub enum Expr {
     },
 }
 
-/// Parse the learning subset.
+/// Parse the CPU ESSL subset.
 ///
 /// ```text
 /// #version 300 es
@@ -771,7 +771,7 @@ mod tests {
     const SAMPLE: &str = include_str!("../../../examples/webgl2-triangle/float_local.essl");
 
     #[test]
-    fn parses_the_learning_fixture_with_source_spans() {
+    fn parses_the_demo_fixture_with_source_spans() {
         let unit = parse_essl_subset(SAMPLE).expect("fixture parses");
         assert_eq!(unit.version_span.slice(SAMPLE), Some("#version 300 es"));
         assert_eq!(unit.uniforms.len(), 1);

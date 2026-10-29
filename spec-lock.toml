@@ -70,11 +70,13 @@ forbidden_p0_work = [
     "WebGL JavaScript facade",
 ]
 
-[learning_track.webgl2]
-status = "learning-slice"
-goal = "pure CPU from-scratch WebGL2-style stack for learning; no browser-native WebGL or WebGPU"
-stack = "glgpu-webgl only; no dependency on WebGPU-track crates"
-debug_page = "web/webgl.html boots crates/glgpu-webgl-web; that shell depends only on glgpu-webgl and is not a browser WebGL context"
+[webgl_mock]
+status = "webgl-mock"
+goal = "webgl-mock: WebGL2-style visualization running on the CPU; not native WebGL or native WebGPU"
+stack = "glgpu-webgl only; no dependency on webgpu-mock crates"
+debug_page = "web/webgl.html boots crates/glgpu-webgl-web on the main thread; that shell depends only on glgpu-webgl and is not a native WebGL context"
+threading_target = "decided 2026-10-28: one SharedArrayBuffer, double buffered. Front slot for main-thread Canvas 2D present, back slot for Worker raster. The back slot is the logical drawing buffer and is authoritative for raster results, hash, tests, and pixel debugging. Handoff uses Atomics. Do not transfer away the sole buffer. No extra full-frame framebuffer copied into the SAB each frame, except later for an offscreen FBO or a non-present size. Triple buffering is not the default. No OffscreenCanvas. No copied postMessage of pixel payloads. A zero-copy transfer of a duplicate snapshot is not the primary path"
+threading_current = "when crossOriginIsolated, glgpu-webgl-worker draws the back slot in one SharedArrayBuffer and the page presents the front slot; without SharedArrayBuffer the demo stays on the main thread. drawArrays remains NotStarted. There is no triple buffer and no OffscreenCanvas"
 host_webgl = false
 host_webgpu = false
 navigator_gpu = false
@@ -84,10 +86,10 @@ jit = false
 compile_path = "ESSL source -> AST -> self-authored bytecode IR -> CPU interpreter"
 changes_product_order = false
 production_phase_unchanged = "P7a+"
-document = "docs/adr/0003-parallel-webgl2-learning-track.md"
-support_matrix = "docs/support-matrix/webgl2-learning.toml"
+document = "docs/adr/0003-parallel-webgl-mock.md"
+support_matrix = "docs/support-matrix/webgl-mock.toml"
 
-[learning_track.webgl2.baseline]
+[webgl_mock.baseline]
 webgl = "Khronos WebGL 2.0.0"
 webgl_date = "2017-04-11"
 webgl_url = "https://registry.khronos.org/webgl/specs/2.0.0/"

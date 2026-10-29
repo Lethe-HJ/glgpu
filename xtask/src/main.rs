@@ -38,6 +38,10 @@ fn run(args: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), Box<dyn
             require_no_arguments("build-web-mt", args)?;
             build_web_mt()
         }
+        "build-present-workers" => {
+            require_no_arguments("build-present-workers", args)?;
+            build_present_workers()
+        }
         "help" | "--help" | "-h" => {
             println!("{}", usage());
             Ok(())
@@ -47,7 +51,7 @@ fn run(args: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), Box<dyn
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  xtask serve [--dir <directory>] [--bind <address>]\n  xtask build-web [--crate <wasm-crate>] [--out-dir <directory>] [--out-name <name>] [--dev|--release] [-- <extra cargo build args>]\n  xtask build-web-mt"
+    "Usage:\n  xtask serve [--dir <directory>] [--bind <address>]\n  xtask build-web [--crate <wasm-crate>] [--out-dir <directory>] [--out-name <name>] [--dev|--release] [-- <extra cargo build args>]\n  xtask build-web-mt\n  xtask build-present-workers"
 }
 
 #[derive(Debug)]
@@ -280,13 +284,35 @@ fn wasm_pack_arguments(options: &BuildWebOptions) -> Vec<std::ffi::OsString> {
 
 fn build_web_mt() -> Result<(), Box<dyn Error>> {
     let workspace = workspace_root();
-    let wasm_bindgen = find_wasm_bindgen()?;
-    let cargo_arguments = mt_cargo_arguments();
-
     println!("Building {MT_WASM_PACKAGE} with {MT_NIGHTLY} and shared-memory WebAssembly");
+    run_shared_cargo(
+        &workspace,
+        &shared_cargo_arguments(&[MT_WASM_PACKAGE], Some("parallel")),
+    )?;
+    bind_shared_wasm(&workspace, "web/pkg-mt", MT_WASM_OUTPUT_NAME)?;
+    Ok(())
+}
+
+fn build_present_workers() -> Result<(), Box<dyn Error>> {
+    let workspace = workspace_root();
+    println!("Building present workers with {MT_NIGHTLY} and shared-memory WebAssembly");
+    run_shared_cargo(
+        &workspace,
+        &shared_cargo_arguments(&["glgpu-webgl-worker", "glgpu-webgpu-worker"], None),
+    )?;
+    bind_shared_wasm(&workspace, "web/pkg-webgl-worker", "glgpu_webgl_worker")?;
+    bind_shared_wasm(&workspace, "web/pkg-webgpu-worker", "glgpu_webgpu_worker")?;
+    Ok(())
+}
+
+fn run_shared_cargo(
+    workspace: &Path,
+    cargo_arguments: &[std::ffi::OsString],
+) -> Result<(), Box<dyn Error>> {
     let cargo_status = Command::new("cargo")
-        .current_dir(&workspace)
-        .args(&cargo_arguments)
+        .env_remove("RUSTFLAGS")
+        .current_dir(workspace)
+        .args(cargo_arguments)
         .status()
         .map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
@@ -298,12 +324,18 @@ fn build_web_mt() -> Result<(), Box<dyn Error>> {
 
     if !cargo_status.success() {
         return Err(TaskError::new(format!(
-            "multi-thread cargo build exited with status {cargo_status}; ensure `{MT_NIGHTLY}` is installed with the wasm32-unknown-unknown target and rust-src component"
+            "shared-memory cargo build exited with status {cargo_status}; ensure `{MT_NIGHTLY}` is installed with the wasm32-unknown-unknown target and rust-src component"
         ))
         .into());
     }
+    Ok(())
+}
 
-    let input = mt_wasm_input(&workspace);
+fn bind_shared_wasm(workspace: &Path, out_dir: &str, out_name: &str) -> Result<(), Box<dyn Error>> {
+    let wasm_bindgen = find_wasm_bindgen()?;
+    let input = workspace
+        .join("target/wasm32-unknown-unknown/release")
+        .join(format!("{out_name}.wasm"));
     if !input.is_file() {
         return Err(TaskError::new(format!(
             "cargo succeeded but did not produce {}",
@@ -311,17 +343,15 @@ fn build_web_mt() -> Result<(), Box<dyn Error>> {
         ))
         .into());
     }
-
-    let output = workspace.join("web/pkg-mt");
-    let bindgen_arguments = mt_wasm_bindgen_arguments(&workspace);
+    let output = workspace.join(out_dir);
     println!(
         "Running wasm-bindgen {WASM_BINDGEN_VERSION} for {} -> {}",
         input.display(),
         output.display()
     );
     let bindgen_status = Command::new(&wasm_bindgen)
-        .current_dir(&workspace)
-        .args(&bindgen_arguments)
+        .current_dir(workspace)
+        .args(shared_bindgen_arguments(&output, out_name, &input))
         .status()
         .map_err(|error| {
             TaskError::new(format!(
@@ -329,18 +359,16 @@ fn build_web_mt() -> Result<(), Box<dyn Error>> {
                 wasm_bindgen.display()
             ))
         })?;
-
     if !bindgen_status.success() {
         return Err(
             TaskError::new(format!("wasm-bindgen exited with status {bindgen_status}")).into(),
         );
     }
-
     Ok(())
 }
 
-fn mt_cargo_arguments() -> Vec<std::ffi::OsString> {
-    vec![
+fn shared_cargo_arguments(packages: &[&str], features: Option<&str>) -> Vec<std::ffi::OsString> {
+    let mut arguments = vec![
         format!("+{MT_NIGHTLY}").into(),
         "--config".into(),
         ".cargo/mt.toml".into(),
@@ -350,29 +378,32 @@ fn mt_cargo_arguments() -> Vec<std::ffi::OsString> {
         "--target".into(),
         "wasm32-unknown-unknown".into(),
         "--release".into(),
-        "-p".into(),
-        MT_WASM_PACKAGE.into(),
-        "--features".into(),
-        "parallel".into(),
-    ]
+    ];
+    for package in packages {
+        arguments.push("-p".into());
+        arguments.push((*package).into());
+    }
+    if let Some(features) = features {
+        arguments.push("--features".into());
+        arguments.push(features.into());
+    }
+    arguments
 }
 
-fn mt_wasm_bindgen_arguments(workspace: &Path) -> Vec<std::ffi::OsString> {
+fn shared_bindgen_arguments(
+    output: &Path,
+    out_name: &str,
+    input: &Path,
+) -> Vec<std::ffi::OsString> {
     vec![
         "--target".into(),
         "web".into(),
         "--out-dir".into(),
-        workspace.join("web/pkg-mt").into_os_string(),
+        output.as_os_str().to_owned(),
         "--out-name".into(),
-        MT_WASM_OUTPUT_NAME.into(),
-        mt_wasm_input(workspace).into_os_string(),
+        out_name.into(),
+        input.as_os_str().to_owned(),
     ]
-}
-
-fn mt_wasm_input(workspace: &Path) -> PathBuf {
-    workspace
-        .join("target/wasm32-unknown-unknown/release")
-        .join(format!("{MT_WASM_OUTPUT_NAME}.wasm"))
 }
 
 fn find_wasm_bindgen() -> Result<PathBuf, TaskError> {
@@ -857,6 +888,8 @@ mod tests {
             fs::read_to_string(workspace_root().join("web/index.html")).expect("web/index.html");
         assert!(index.contains("\"./pkg/glgpu_web.js\""));
         assert!(index.contains("\"./pkg-mt/glgpu_web.js\""));
+        assert!(index.contains("\"./present-slots.js\""));
+        assert!(index.contains("\"./webgpu-worker.js\""));
         assert!(index.contains("./coop-coep.js"));
         assert!(index.contains("href=\"./webgl.html\""));
         assert!(index.contains("aria-current=\"page\">WebGPU"));
@@ -866,6 +899,8 @@ mod tests {
         let webgl =
             fs::read_to_string(workspace_root().join("web/webgl.html")).expect("web/webgl.html");
         assert!(webgl.contains("\"./pkg-webgl/glgpu_webgl_web.js\""));
+        assert!(webgl.contains("\"./present-slots.js\""));
+        assert!(webgl.contains("\"./webgl-worker.js\""));
         assert!(webgl.contains("href=\"./index.html\""));
         assert!(webgl.contains("aria-current=\"page\">WebGL"));
         assert!(webgl.contains("./api-nav.css"));
@@ -936,7 +971,7 @@ mod tests {
 
     #[test]
     fn mt_cargo_command_is_fully_locked() {
-        let args = mt_cargo_arguments();
+        let args = shared_cargo_arguments(&["glgpu-web"], Some("parallel"));
         let args: Vec<_> = args
             .iter()
             .map(|arg| arg.to_string_lossy().into_owned())
@@ -965,7 +1000,8 @@ mod tests {
     #[test]
     fn mt_bindgen_command_targets_web_and_pkg_mt() {
         let workspace = Path::new("/workspace");
-        let args = mt_wasm_bindgen_arguments(workspace);
+        let input = workspace.join("target/wasm32-unknown-unknown/release/glgpu_web.wasm");
+        let args = shared_bindgen_arguments(&workspace.join("web/pkg-mt"), "glgpu_web", &input);
         let args: Vec<_> = args
             .iter()
             .map(|arg| arg.to_string_lossy().into_owned())

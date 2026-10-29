@@ -111,7 +111,7 @@ shared Wasm RGBA8 → ordinary Uint8ClampedArray → ImageData → Canvas bitmap
 - 不宣称 MT presentation 零拷贝；
 - benchmark 必须拆分 raster、staging copy 和 `putImageData`；
 - 后续应复用 staging/ImageData，评估 dirty rect，而不是假设更多 worker 一定提高整帧性能；
-- OffscreenCanvas 只能改变 owner 和 UI 卡顿，不能消除 shared→non-shared copy。
+- 隔离的 demo 页已经这样做：呈现主路径是 SharedArrayBuffer 双缓冲加 Atomics，不使用 OffscreenCanvas。三缓冲不是默认。`ImageData` 不能直接接收共享视图时，主线程只从当前 front 槽复制到普通 ArrayBuffer，再 `putImageData`。`?threads=1` 的 Rayon 包仍是另一条共享内存，不使用这两块 present 槽。
 
 ## 后果
 

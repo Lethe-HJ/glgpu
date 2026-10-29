@@ -1,4 +1,4 @@
-//! ESSL editor helpers for the learning-track debug page.
+//! ESSL editor helpers for the webgl-mock demo page.
 //!
 //! Parsing, lowering, and raster stay in `glgpu-webgl`. This module only
 //! prepares diagnostics, highlighting, and the fixed P0 vertex bindings the
@@ -8,8 +8,7 @@ use std::fmt::Write as _;
 
 use glgpu_webgl::{
     BytecodeModule, DebugSymbol, FrontendError, LowerError, P0_MILESTONE_CLEAR, Rgba8,
-    ShaderDrawError, SourceSpan, WebGl2LearningTrack, lower, p0_milestone_clip_vertices,
-    parse_essl_subset,
+    ShaderDrawError, SourceSpan, WebGlMock, lower, p0_milestone_clip_vertices, parse_essl_subset,
 };
 
 pub const PREVIEW_WIDTH: u32 = 720;
@@ -77,7 +76,7 @@ const TYPES: &[&str] = &[
 ];
 
 pub fn conformance_banner() -> &'static str {
-    WebGl2LearningTrack::new().banner()
+    WebGlMock::new().banner()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -245,7 +244,7 @@ pub fn format_tracked_pixel(x: u32, y: u32, color: Rgba8) -> String {
         "stored color differs from the clear color"
     };
     format!(
-        "pixel ({x}, {y})\nfinal rgba({}, {}, {}, {})\n{coverage}\nno depth buffer on this learning slice\nno per-primitive event log; the interpreter runs once per vertex\n",
+        "pixel ({x}, {y})\nfinal rgba({}, {}, {}, {})\n{coverage}\nno depth buffer on this CPU demo\nno per-primitive event log; the interpreter runs once per vertex\n",
         color.r, color.g, color.b, color.a
     )
 }
@@ -266,7 +265,7 @@ pub fn compile_essl(source: &str) -> Result<CompileSuccess, Diagnostic> {
 /// Declared names receive bindings only when this page knows them: `u_scale`
 /// is `1.0`, and `a_x`..`a_b` are the milestone clip vertex. Other names are
 /// left unbound so the interpreter can report them.
-pub fn render_preview(source: &str) -> Result<glgpu_webgl::LearningContext, Diagnostic> {
+pub fn render_preview(source: &str) -> Result<glgpu_webgl::DemoContext, Diagnostic> {
     let compiled = compile_essl(source)?;
     let module = &compiled.module;
     let clips = p0_milestone_clip_vertices();
@@ -282,7 +281,7 @@ pub fn render_preview(source: &str) -> Result<glgpu_webgl::LearningContext, Diag
         filter_bindings(&inputs[1], &module.inputs),
         filter_bindings(&inputs[2], &module.inputs),
     ];
-    let mut context = WebGl2LearningTrack::new()
+    let mut context = WebGlMock::new()
         .create_context(PREVIEW_WIDTH, PREVIEW_HEIGHT)
         .map_err(|error| Diagnostic {
             message: error.to_string(),
@@ -442,10 +441,11 @@ mod tests {
     }
 
     #[test]
-    fn banner_keeps_the_learning_track_wording() {
+    fn banner_names_the_cpu_stack() {
         let banner = conformance_banner();
         assert!(banner.contains("NOT WEBGL CONFORMANT"));
-        assert!(banner.contains("CpuWebGl2LearningTrack"));
+        assert!(banner.contains("webgl-mock"));
+        assert!(!banner.contains("Learning"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
-//! CPU RGBA8 framebuffer owned by the WebGL2 learning track.
+//! CPU RGBA8 framebuffer owned by webgl-mock.
 //!
-//! This buffer is not a WebGL drawing buffer. Nothing here calls a browser
-//! GPU API, and the type does not depend on the WebGPU-track crates.
+//! This buffer is not a native WebGL drawing buffer. Nothing here calls a
+//! browser GPU API, and the type does not depend on the webgpu-mock crates.
 //!
 //! Row 0 is the top image row. That storage order is transitional so a
 //! P0-parity picture matches the WebGPU demo. WebGL window y is bottom-left
@@ -12,7 +12,8 @@ use std::fmt;
 
 use crate::CONFORMANCE_BANNER;
 
-/// Unpremultiplied 8-bit color stored by the learning framebuffer.
+/// Unpremultiplied 8-bit color stored by the CPU framebuffer.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Rgba8 {
     pub r: u8,
@@ -33,7 +34,7 @@ pub(crate) fn quantize_unorm(value: f32) -> u8 {
     (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-/// Failure while creating the learning framebuffer.
+/// Failure while creating the CPU framebuffer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContextError {
     /// Width or height was zero.
@@ -45,9 +46,9 @@ pub enum ContextError {
 impl fmt::Display for ContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyExtent => write!(f, "learning framebuffer extent must be non-zero"),
+            Self::EmptyExtent => write!(f, "CPU framebuffer extent must be non-zero"),
             Self::ExtentOverflow { width, height } => {
-                write!(f, "learning framebuffer {width}x{height} overflows usize")
+                write!(f, "CPU framebuffer {width}x{height} overflows usize")
             }
         }
     }
@@ -55,28 +56,26 @@ impl fmt::Display for ContextError {
 
 impl Error for ContextError {}
 
-/// CPU-only learning context.
+/// CPU demo context for webgl-mock.
+///
+/// The triangle page uses this type. It is not a native WebGL context.
 ///
 /// The banner stays `NOT WEBGL CONFORMANT`. This object is not a
 /// `WebGL2RenderingContext`, has no mutable GL state machine, and cannot be
 /// obtained from `canvas.getContext`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LearningContext {
+pub struct DemoContext {
     width: u32,
     height: u32,
     pixels: Vec<Rgba8>,
 }
 
-impl LearningContext {
+impl DemoContext {
     pub fn new(width: u32, height: u32) -> Result<Self, ContextError> {
         if width == 0 || height == 0 {
             return Err(ContextError::EmptyExtent);
         }
-        let count = u64::from(width)
-            .checked_mul(u64::from(height))
-            .ok_or(ContextError::ExtentOverflow { width, height })?;
-        let count =
-            usize::try_from(count).map_err(|_| ContextError::ExtentOverflow { width, height })?;
+        let count = pixel_count(width, height)?;
         Ok(Self {
             width,
             height,
@@ -100,7 +99,7 @@ impl LearningContext {
         false
     }
 
-    /// Replace every pixel. This is the learning clear, not `gl.clear`.
+    /// Replace every pixel. This is the CPU clear, not `gl.clear`.
     pub fn clear(&mut self, color: Rgba8) {
         self.pixels.fill(color);
     }
@@ -117,6 +116,19 @@ impl LearningContext {
     /// Tightly packed RGBA8, row 0 at the top.
     ///
     /// Canvas 2D `putImageData` can consume this order without flipping y.
+    /// Replace pixels from tightly packed RGBA8. The allocation size stays the
+    /// same. This is an inspector copy of a presented front slot, not a second
+    /// logical drawing buffer.
+    pub fn copy_from_rgba8_bytes(&mut self, bytes: &[u8]) -> bool {
+        if bytes.len() != self.pixel_byte_len() {
+            return false;
+        }
+        for (pixel, chunk) in self.pixels.iter_mut().zip(bytes.chunks_exact(4)) {
+            *pixel = Rgba8::new(chunk[0], chunk[1], chunk[2], chunk[3]);
+        }
+        true
+    }
+
     pub fn to_rgba8_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.pixels.len().saturating_mul(4));
         for pixel in &self.pixels {
@@ -128,7 +140,7 @@ impl LearningContext {
     /// FNV-1a of width, height, and tightly packed RGBA8 bytes.
     ///
     /// This framebuffer has no depth plane, so the value is not comparable to
-    /// the WebGPU track's hash. The algorithm is local to this crate.
+    /// the WebGPU framebuffer hash. The algorithm is local to this crate.
     pub fn stable_hash64(&self) -> u64 {
         const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
         const PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -150,6 +162,26 @@ impl LearningContext {
     pub(crate) fn pixels_mut(&mut self) -> &mut [Rgba8] {
         &mut self.pixels
     }
+
+    /// Borrow the slot storage. The allocation stays put so a SharedArrayBuffer
+    /// view can map onto it.
+    pub fn pixel_ptr(&self) -> *const u8 {
+        self.pixels.as_ptr().cast::<u8>()
+    }
+
+    pub fn pixel_byte_len(&self) -> usize {
+        self.pixels.len().saturating_mul(4)
+    }
+}
+
+fn pixel_count(width: u32, height: u32) -> Result<usize, ContextError> {
+    if width == 0 || height == 0 {
+        return Err(ContextError::EmptyExtent);
+    }
+    let count = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or(ContextError::ExtentOverflow { width, height })?;
+    usize::try_from(count).map_err(|_| ContextError::ExtentOverflow { width, height })
 }
 
 #[cfg(test)]
@@ -158,7 +190,7 @@ mod tests {
 
     #[test]
     fn rgba8_bytes_and_hash_follow_the_stored_pixels() {
-        let mut context = LearningContext::new(2, 1).expect("extent");
+        let mut context = DemoContext::new(2, 1).expect("extent");
         context.clear(Rgba8::new(13, 18, 30, 255));
 
         assert_eq!(

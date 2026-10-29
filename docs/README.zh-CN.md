@@ -1,5 +1,7 @@
 # GLGPU 文档索引
 
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。产品名称仍是 webgl-mock / webgpu-mock，以及原生 WebGL / 原生 WebGPU。
+
 本文档集描述 GLGPU 的长期架构和当前已经实现的 P0 WebGPU-first 垂直切片。阅读时必须区分“当前契约”和“规划目标”：规划文档中出现的功能不代表代码已经支持。
 
 ## 推荐阅读顺序
@@ -21,7 +23,7 @@
 1. 阅读[完整架构与阶段规划](architecture-plan.zh-CN.md)。
 2. 阅读[ADR 0001：WebGPU-first](adr/0001-webgpu-first.md)。
 3. 阅读[ADR 0002：ST/MT 双构建](adr/0002-wasm-build-profiles.md)。
-4. 若改动 WebGL2 学习轨道，阅读[ADR 0003](adr/0003-parallel-webgl2-learning-track.md)。它不改变 ADR 0001 的产品顺序。
+4. 若改动 webgl-mock，阅读[ADR 0003](adr/0003-parallel-webgl-mock.md)。它与 webgpu-mock 对等。
 5. 检查根目录 [`spec-lock.toml`](../spec-lock.toml) 中的规范、工具链和依赖锁。
 6. 架构边界发生变化时先增加或修改 ADR，再修改代码和支持矩阵。
 
@@ -38,9 +40,9 @@
 | [Architecture plan](architecture-plan.zh-CN.md) | 完整长期技术方案与风险分析 | 当前基线 + 长期规划 |
 | [ADR 0001](adr/0001-webgpu-first.md) | WebGPU-first、Rust-first、WebGL 产品实现延后 | 已接受决策 |
 | [ADR 0002](adr/0002-wasm-build-profiles.md) | stable ST 与 nightly MT 分离 | 已接受决策 |
-| [ADR 0003](adr/0003-parallel-webgl2-learning-track.md) | 并行的纯 CPU WebGL2 学习轨道；独立栈，不取代 ADR 0001 | 已接受决策 |
-| [WebGL2 学习轨道](webgl2-learning-track.zh-CN.md) | CPU/from-scratch WebGL2 的基线、当前切片和后续步骤 | 学习切片，不是合规实现 |
-| [WebGL2 学习矩阵](support-matrix/webgl2-learning.toml) | 学习轨道能力；implemented / partial / not_started | 是 |
+| [ADR 0003](adr/0003-parallel-webgl-mock.md) | 并行的 webgl-mock；独立栈，不取代 ADR 0001 | 已接受决策 |
+| [webgl-mock](webgl-mock.zh-CN.md) | 模拟 WebGL 的基线、当前子集、线程模型现状与目标 | CPU mock，不是原生 WebGL，也不是合规实现 |
+| [webgl-mock 矩阵](support-matrix/webgl-mock.toml) | webgl-mock 能力；implemented / partial / not_started | 是 |
 | [`spec-lock.toml`](../spec-lock.toml) | 规范日期、工具版本、构建 profile | 是 |
 
 ## 当前状态摘要
@@ -61,7 +63,7 @@
 | Compute execution | 未实现 | 范围仍需冻结 |
 | Standard `navigator.gpu` façade | 未实现 | 必须等待 capability/CTS gate |
 | WebGL/ESSL 产品实现 | 延后 | P7a+；ADR 0001 仍然有效 |
-| WebGL2 学习轨道 | 学习切片 | 独立 CPU 栈：clear、WebGL clip/左下窗口、shader 三角形、ESSL 子集、bytecode 和解释器。`/webgl.html` 是独立调试页。禁止浏览器 WebGL/WebGPU。见 ADR 0003 |
+| webgl-mock | 与 webgpu-mock 对等；现有 CPU 子集 | 现有：`DemoContext` 的 `Vec<Rgba8>`、ESSL→bytecode、主线程 `putImageData`。未来、尚未实现：Worker + Wasm、SharedArrayBuffer 双缓冲，以及 demo 层的原生对照页。不使用 OffscreenCanvas。见 ADR 0003 |
 
 ## 信息优先级
 
@@ -89,6 +91,10 @@
 
 ## 术语
 
+- **webgl-mock / 模拟 WebGL**：CPU 上的 WebGL2 风格实现。入口 `WebGlMock`，三角形页面是 demo，上下文是 `DemoContext`。标识 `webgl-mock — NOT WEBGL CONFORMANT`。
+- **webgpu-mock / 模拟 WebGPU**：CPU 上的 WebGPU 风格实现。标识保持 `CpuGpuSubset — NOT WEBGPU CONFORMANT`。
+- **原生 WebGL / 原生 WebGPU**：只在 demo 层做并排对照。这是未来的设计，目前还未实现。不是 mock crate 的绘制后端。
+- **呈现（2026-10-28 已决定，demo 页已落地）**：这是现有设计，代码中已实现。一块 SharedArrayBuffer 双缓冲。front 给主线程 Canvas 2D 呈现，back 给 Worker 光栅，交接用 Atomics。webgl-mock 的逻辑绘制缓冲就是 back 槽。三缓冲不是默认。不使用 OffscreenCanvas。未隔离时 webgl-mock 仍用主线程上的 `DemoContext` 再 `putImageData`；webgpu-mock 的 `?threads=1` 仍用 CPU framebuffer 再 `putImageData`。
 - **P0 垂直切片**：当前可运行的 CPU triangle → framebuffer → Canvas2D 与最小像素追踪，不代表完整 P0 风险验证已经结束。
 - **ST**：stable toolchain 构建的非共享内存单线程 Wasm 包。
 - **MT**：固定 nightly、重建标准库、SharedArrayBuffer 和 `wasm-bindgen-rayon` 的多线程 Wasm 包。
