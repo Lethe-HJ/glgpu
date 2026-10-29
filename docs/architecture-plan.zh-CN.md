@@ -12,6 +12,8 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 | webgpu MT 的 Rayon tile | 现有，范围有限 | `wasm-bindgen-rayon` 的 SharedArrayBuffer 是 Wasm 线性内存。worker 只跑 tile kernel。这不是 front/back 两槽呈现 |
 | webgl-mock：clear、clip、ESSL→bytecode、shader 三角形 demo | 现有 | `DemoContext` 的 `Vec<Rgba8>` 与 `draw_shader_triangle`。主线程 `put_image_data` |
 | 不用 OffscreenCanvas；页面 canvas 只呈现 | 现有 | 两条 demo 都拿 Canvas 2D，不把页面 canvas 当原生 GL/GPU drawing buffer |
+| webgl-mock 与 webgpu-mock 对等 | 现有 | 两个 crate、两张 mock 页（`web/webgl.html` 与 `web/index.html`），互不依赖 |
+| demo 层的原生 WebGL / 原生 WebGPU 对照页 | 未来 | 这是未来的设计，目前还未实现。目前没有并排的原生三角形页 |
 | Worker + Wasm 后端与主线程 Web API façade | 未来 | 这是未来的设计，目前还未实现。目前两条 Wasm 都在主线程跑绘制 |
 | SharedArrayBuffer 双缓冲 + Atomics；back 槽是逻辑绘制缓冲 | 未来 | 这是未来的设计，目前还未实现。目前 webgl 像素在 `Vec<Rgba8>`；webgpu 像素在 `glgpu-core` 的 framebuffer |
 | 三缓冲不是默认 | 未来约束 | 目前没有双槽，也没有第三块呈现缓冲 |
