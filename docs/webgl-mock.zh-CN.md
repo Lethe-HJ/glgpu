@@ -1,5 +1,7 @@
 # webgl-mock
 
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。webgl-mock 保持精简：保真度只要够理解 WebGL 的核心，不为求完备而过度设计。产品名称仍是 webgl-mock，不是原生 WebGL。
+
 > 状态：CPU 子集。是模拟 WebGL，不是原生 WebGL，也不是合规实现。  
 > 日期：2026-10-27  
 > 决策：[ADR 0003](adr/0003-parallel-webgl-mock.md)  

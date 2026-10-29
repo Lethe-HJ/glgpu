@@ -1,5 +1,7 @@
 # GLGPU
 
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。代码和文档里的产品名称仍是 webgl-mock / webgpu-mock，以及原生 WebGL / 原生 WebGPU。
+
 GLGPU 在 CPU 上做模拟 WebGPU（webgpu-mock）和模拟 WebGL（webgl-mock），不是浏览器里的原生 WebGPU / 原生 WebGL。主线是 webgpu-mock：使用 Rust/WebAssembly 的确定性参考渲染器与图形调试器。渲染结果写入 RGBA8 framebuffer。2026-10-28 已决定：呈现主路径是一块 SharedArrayBuffer 双缓冲。back 槽是逻辑绘制缓冲，也是 hash、测试和像素调试的权威来源；front 槽交给主线程，用 Canvas 2D `putImageData` / `ImageData` 呈现。交接用 Atomics。不使用 OffscreenCanvas，三缓冲不是默认。页面 canvas 只呈现。像素载荷不用拷贝式 postMessage。WebGL demo 页当前仍是主线程上的单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。这次不实现 Worker 后端。WebGL 产品实现仍等到公共渲染内核、shader 执行和调试模型稳定之后。页面上的三角形是 demo。
 
 > 当前状态：**P0 垂直切片已可运行，但项目不符合 WebGPU 标准，也不是 `navigator.gpu` 的替代实现。**

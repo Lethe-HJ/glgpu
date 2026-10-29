@@ -4,6 +4,8 @@
 - 日期：2026-10-27
 - 决策范围：webgl-mock 的目标、禁止的后端，以及当前允许落地的范围
 
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。本 ADR 的 webgl-mock 因此保持精简：保真度只要够理解核心，不为求完备而过度设计。类型名仍是 `WebGlMock` 与 `DemoContext`，产品名称仍是 webgl-mock。呈现路径仍是 2026-10-28 的决定：SharedArrayBuffer 双缓冲，逻辑绘制缓冲是可写的 back 槽，不使用 OffscreenCanvas。
+
 > 更名记录：本文早期标题和标识使用过 `WebGl2LearningTrack`、`LearningContext`、`CpuWebGl2LearningTrack`，以及「WebGL2 学习轨道」。那些名字只作历史对照。当前入口是 `WebGlMock`，三角形 demo 的上下文是 `DemoContext`，标识是 `webgl-mock — NOT WEBGL CONFORMANT`。
 
 ## 术语

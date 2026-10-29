@@ -1,5 +1,7 @@
 # GLGPU：WebGPU 优先的 CPU 调试模拟器规划（WebGL 后续）
 
+GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。范围保持精简：保真度只要够理解这些核心，不为求完备而过度设计。下文的 webgl-mock / webgpu-mock 是 CPU 模拟，原生 WebGL / 原生 WebGPU 是浏览器内建 API。这个宗旨不改变已经决定的呈现路径：SharedArrayBuffer 双缓冲，逻辑绘制缓冲是可写的 back 槽，不使用 OffscreenCanvas。
+
 > 状态：执行基线 v0.4（WebGPU-first；P0 垂直切片已落地，完整 P0 gate 仍在进行）  
 > 日期：2026-08-22  
 > 仓库现状：Cargo workspace、规范锁、ADR、P0 CPU 渲染/追踪与 ST/MT Web 演示已建立  
