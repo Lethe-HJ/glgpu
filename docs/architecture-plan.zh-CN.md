@@ -409,7 +409,7 @@ Naga 非常适合 WGSL，但直接把软件渲染器实现成 `wgpu-hal` 后端�
 
 本节用于提前冻结公共内核的兼容边界，不代表当前实现顺序。P0 只做限时架构探针，P1/P2 做兼容性复核；ESSL 编译器从 P7a 开始、WebGL 状态机从 P7b 开始、JS adapter/正式 façade 从 P8 开始，当前产品主线见第 8 章。
 
-webgl-mock 与 webgpu-mock 对等，见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。它在独立 crate 里用 CPU 实现模拟 WebGL，不依赖 webgpu-mock 的 crate。原生 WebGL 对照页放在 demo 层，这是未来的设计，目前还未实现。页面上的三角形是 demo。隔离的 demo 页已经用 SharedArrayBuffer 双缓冲加 Atomics：逻辑绘制缓冲是可写的 back 槽，主线程呈现 front 槽，不使用 OffscreenCanvas，也没有三缓冲。未隔离时仍在主线程 `putImageData`。它还没有本节的状态机。
+webgl-mock 与 webgpu-mock 对等，见 [ADR 0003](adr/0003-parallel-webgl-mock.md) 和 [webgl-mock](webgl-mock.zh-CN.md)。它在独立 crate 里用 CPU 实现模拟 WebGL，不依赖 webgpu-mock 的 crate。原生 WebGL 对照页放在 demo 层，这是未来的设计，目前还未实现。页面上的三角形是 demo。隔离的 demo 页已经用 SharedArrayBuffer 双缓冲加 Atomics：逻辑绘制缓冲是可写的 back 槽，主线程呈现 front 槽，不使用 OffscreenCanvas，也没有三缓冲。未隔离时仍在主线程 `putImageData`。它还没有本节的状态机。 webgl-mock 文档内另有「原生 WebGL2 渲染管线（参照模型）」与「未来在 CPU 上补齐管线的计划」两节，对照原生阶段与当前缺口；那些计划属于 mock 切片，不是本章 P7a–P9 产品 gate 的开工声明。
 
 ### 9.1 状态与对象
 

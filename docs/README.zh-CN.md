@@ -41,7 +41,7 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 | [ADR 0001](adr/0001-webgpu-first.md) | WebGPU-first、Rust-first、WebGL 产品实现延后 | 已接受决策 |
 | [ADR 0002](adr/0002-wasm-build-profiles.md) | stable ST 与 nightly MT 分离 | 已接受决策 |
 | [ADR 0003](adr/0003-parallel-webgl-mock.md) | 并行的 webgl-mock；独立栈，不取代 ADR 0001 | 已接受决策 |
-| [webgl-mock](webgl-mock.zh-CN.md) | 模拟 WebGL 的基线、当前子集、线程模型现状与目标 | CPU mock，不是原生 WebGL，也不是合规实现 |
+| [webgl-mock](webgl-mock.zh-CN.md) | 模拟 WebGL 的基线、当前子集；含原生管线参照与 CPU 补齐计划 | CPU mock，不是原生 WebGL，也不是合规实现 |
 | [webgl-mock 矩阵](support-matrix/webgl-mock.toml) | webgl-mock 能力；implemented / partial / not_started | 是 |
 | [`spec-lock.toml`](../spec-lock.toml) | 规范日期、工具版本、构建 profile | 是 |
 
@@ -63,7 +63,7 @@ GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebG
 | Compute execution | 未实现 | 范围仍需冻结 |
 | Standard `navigator.gpu` façade | 未实现 | 必须等待 capability/CTS gate |
 | WebGL/ESSL 产品实现 | 延后 | P7a+；ADR 0001 仍然有效 |
-| webgl-mock | 与 webgpu-mock 对等；现有 CPU 子集 | 现有：`DemoContext` 的 `Vec<Rgba8>`、ESSL→bytecode、主线程 `putImageData`。未来、尚未实现：Worker + Wasm、SharedArrayBuffer 双缓冲，以及 demo 层的原生对照页。不使用 OffscreenCanvas。见 ADR 0003 |
+| webgl-mock | 与 webgpu-mock 对等；现有 CPU 子集 | 现有：`DemoContext` 的 `Vec<Rgba8>`、ESSL→bytecode、主线程 `putImageData`。未来、尚未实现：Worker + Wasm、SharedArrayBuffer 双缓冲，以及 demo 层的原生对照页。不使用 OffscreenCanvas。管线后半（FS、深度、blend、`drawArrays`、VAO/VBO 等）仍按 webgl-mock 文档中的计划补齐。见 ADR 0003 |
 
 ## 信息优先级
 

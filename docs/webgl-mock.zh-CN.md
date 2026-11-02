@@ -3,7 +3,7 @@
 GLGPU 本质上是实验性的，目的是亲自把项目做一遍，抓住 WebGL 与 WebGPU 的核心想法，而不是做成完整的、可上生产的实现。webgl-mock 保持精简：保真度只要够理解 WebGL 的核心，不为求完备而过度设计。产品名称仍是 webgl-mock，不是原生 WebGL。
 
 > 状态：CPU 子集。是模拟 WebGL，不是原生 WebGL，也不是合规实现。  
-> 日期：2026-10-27  
+> 日期：2026-10-29  
 > 决策：[ADR 0003](adr/0003-parallel-webgl-mock.md)  
 > 仓库位置：webgl-mock 与 webgpu-mock 是对等的两条 CPU 实现，不是主从。
 
@@ -160,21 +160,119 @@ cargo xtask serve
 
 打开 `/` 与 `/webgl.html`。GitHub Pages 项目站点对应 `/glgpu/` 与 `/glgpu/webgl.html`。链接都是相对 URL，不要加 `<base>`。
 
-## 下一步
+## 原生 WebGL2 渲染管线（参照模型）
 
-1. 在 native CI 里调用 glslang `16.6.0`，只做 accept/reject 对照，不把它编进 Wasm。
-2. 补 `vec4` / `gl_Position`、透视正确的 varying，以及深度测试。立方体和光照放在这之后。
-3. 单步调试器 UI。调试页会整段运行，但没有暂停。span、逐步局部变量和接口快照已经有了。
-4. mutable state、`drawArrays`、`readPixels`，以及 `DemoContext` 自己的 present 方法。调试页已经把存储第 0 行直接交给 Canvas 2D，不再翻一次 y。
-5. JavaScript adapter 放在最后，并且不是浏览器原生 `WebGL2RenderingContext`。
+下面按一次典型 `drawArrays(TRIANGLES, …)` 的顺序，说明**浏览器原生 WebGL2**里各阶段在做什么。这是学习对照用的参照模型，不是本仓库的合规声明，也不是 `glgpu-webgl` 已经实现的路径。
 
-两条 mock 不共享 crate。webgpu-mock 自己的下一程仍是项目自有 shader IR 和 WGSL 的 CPU 执行。
+产品主线禁止把宿主 WebGL 当绘制后端（ADR 0001 / ADR 0003）。原生管线若出现在仓库里，只允许作为页面旁路的观看/oracle（例如对照页上的 `getContext("webgl2")`），不得接进 `DemoContext` 的绘制路径。
 
-## 相关文档
+```text
+创建 / 默认 framebuffer
+  → clear（可选）
+  → 绑定程序、uniform、VAO/VBO/属性
+  → 设置光栅状态（viewport / cull / depth / blend …）
+  → drawArrays / drawElements
+       → 取顶点属性
+       → 顶点着色器
+       → 图元装配
+       → 裁剪（clip volume）
+       → 透视除法与视口变换
+       → 光栅化（生成片元）
+       → 片元着色器
+       → 逐片元测试与混合（scissor / stencil / depth / blend …）
+       → 写入颜色（与可选的深度/模板）附件
+  → 浏览器合成 / 呈现到 canvas
+```
 
-- [ADR 0001：WebGPU-first，WebGL 产品实现延后](adr/0001-webgpu-first.md)
-- [ADR 0003：这条 CPU 栈的决策与补充](adr/0003-parallel-webgl-mock.md)
-- [P0 API 契约](api-reference.zh-CN.md)（不覆盖 `glgpu-webgl`）
-- [实施路线图](roadmap.zh-CN.md)
-- [webgl-mock 支持矩阵](support-matrix/webgl-mock.toml)
-- [三角形 demo 说明](../examples/webgl2-triangle/README.md)
+分阶段说明：
+
+| 阶段 | 原生 WebGL2 里发生的事 |
+| --- | --- |
+| 上下文与默认 framebuffer | `canvas.getContext("webgl2", …)` 得到 `WebGL2RenderingContext`。默认绘制缓冲挂在这块 canvas 上；还可绑 FBO 画到纹理/renderbuffer。 |
+| 清屏 | `clearColor` / `clearDepth` / `clearStencil` 设定值，`clear(mask)` 按掩码清颜色、深度、模板附件。 |
+| 缓冲与顶点属性 | 创建 VBO（及可选 IBO）、用 `bufferData` 上传；VAO（WebGL2）记录属性绑定；`vertexAttribPointer` / `enableVertexAttribArray` 描述每个 `in` 如何从缓冲取数。 |
+| 着色器编译与程序链接 | `createShader` → `shaderSource` → `compileShader`（VS/FS，ESSL 300）；`createProgram` → `attachShader` → `linkProgram` → `useProgram`。链接合并顶点/片元接口。 |
+| Uniform | `uniform*` 或 UBO 把常量送进当前程序；每 draw 前可改。 |
+| 光栅状态 | `viewport`、`scissor`、面剔除、多边形偏移、深度/模板函数与掩码、混合方程与因子、dither 等。状态机是可变的，影响后续 draw。 |
+| 发起绘制 | `drawArrays` / `drawElements`（及 instancing 等变体）按拓扑拉顶点；这才真正踢开管线。 |
+| 顶点着色 | GPU 对每个顶点执行 VS：读属性与 uniform，写 `gl_Position` 与 `out` varyings。 |
+| 图元装配 | 按 `TRIANGLES` / `LINES` / … 把顶点收成图元；可做面剔除。 |
+| 裁剪 | 对 clip 坐标做体积裁剪。WebGL / OpenGL ES 体积是 `-w <= x,y,z <= w`（近平面 `z = -w`）。 |
+| 透视除法与窗口 | `ndc = clip.xyz / clip.w`，再经 viewport 映到窗口像素；窗口原点在左下，y 向上。 |
+| 光栅化 | 覆盖测试生成片元；插值 varyings（透视校正）。多重采样等属于扩展能力，基线学习可不先碰。 |
+| 片元着色 | 对每个片元执行 FS：读插值 varying 与 uniform，写颜色（及可选 `gl_FragDepth` 等）。 |
+| 深度 / 模板 / 混合 | 通过测试的片元再经 scissor、stencil、depth；最后按 blend 与颜色掩码写入附件。关掉测试时相当于直接覆盖。 |
+| 呈现 | 默认 framebuffer 由浏览器合成到页面上的 canvas。读回用 `readPixels`；FBO 纹理可再采样。 |
+
+对照页若用原生 WebGL2 画固定三角形，也是走同一条链，只是场景故意关掉 depth/stencil/blend/MSAA，方便和 CPU 参考帧做逐字节比较。那仍然只是 oracle，不是 mock 栈后端。
+
+## 当前 CPU 栈与原生管线的差距
+
+`glgpu-webgl` 是独立的纯 CPU webgl-mock 栈。下表对照上一节的原生阶段：标成「已有」的只表示 mock 切片里有可测行为，**不是** WebGL 入口或合规实现。细节以 [`webgl-mock.toml`](support-matrix/webgl-mock.toml) 为准。
+
+| 原生阶段 | CPU mock 现状 | 说明 |
+| --- | --- | --- |
+| 上下文 / 默认 framebuffer | 部分 | `DemoContext` 持有 CPU `Vec<Rgba8>`。不是 `WebGL2RenderingContext`，无 FBO/纹理附件。 |
+| 清屏 | 已有（mock API） | `clear` 填满颜色缓冲。无深度/模板清屏。 |
+| VAO / VBO / IBO / 属性 | 未开始 | 调试页用 Rust 里的具名 `float` 绑定喂解释器，没有缓冲对象或 VAO。 |
+| 着色器编译 / 链接 | 部分 | ESSL 子集 → AST → 自有 bytecode。无 `compileShader`/`linkProgram` 形状；尚无真正的片元着色器模块。 |
+| Uniform | 部分 | 解释器可读已绑定的 scalar uniform；无 UBO，未绑定则执行失败（故意不同于原生的未定义值）。 |
+| 光栅状态机 | 未开始 | 无 viewport/cull/scissor/depth/blend 等可变 GL 状态；也无 `getError`。 |
+| `drawArrays` / `drawElements` | 未开始 | 现有入口是 `draw_shader_triangle` / `draw_clip_space_triangle` 等 mock 方法。 |
+| 顶点着色 | 部分 | CPU 解释器对三个顶点各跑一次，写出 `v_clip_*` / `v_color_*`。无 `vec4` / `gl_Position`。 |
+| 图元装配 | 部分（隐式） | 固定收成一个三角形；无通用拓扑或索引拉取。 |
+| 裁剪 | 部分 | 本 crate 实现 `-w..w` 三角裁剪（`clip.rs`）。 |
+| 透视除法与窗口 | 部分 | 左下窗口 + `storage_y = height - window_y` 的过渡存储（第 0 行仍是图像上方）。 |
+| 光栅化 | 部分 | 采样点中心重心覆盖；规则是本 crate 自有的，不保证与 `glgpu-raster` 或某张 GPU 逐像素相同。 |
+| 片元着色 | 未开始 | 无片元 VM。颜色是顶点色的重心混合后直接写入。 |
+| 深度 / 模板 / 混合 | 未开始 | 无深度/模板缓冲；覆盖即覆盖，无 blend。 |
+| 呈现 / `readPixels` | 部分 / 未开始 | `DemoContext` 无完整 `present` API；调试页壳用 Canvas 2D `putImageData` 复制 RGBA8（隔离页走 worker front slot）。`readPixels` 未开始。 |
+
+一句话：着色器解释器和 clip→窗口→光栅只覆盖了原生管线的前半到中段；属性缓冲、绘制入口、片元着色、测试与混合、以及 WebGL 形状的状态机都还没做。
+
+## 未来在 CPU 上补齐管线的计划
+
+目标不变：在 `glgpu-webgl` 里用纯 CPU 把 WebGL2 **风格**的管线从 0 做到可学习的垂直切片；继续禁止浏览器 WebGL/WebGPU 当后端；继续与 WebGPU 轨道 crate 隔离；编译路径保持 **ESSL → AST → 自有 bytecode → CPU 解释器**（先不做 JIT）；指令带 span、逐步快照，方便以后做单步调试；标识保持 `webgl-mock — NOT WEBGL CONFORMANT`。宿主 GPU 若用于对照，只做 oracle。
+
+### S1 — 着色器表达对齐 WebGL 顶点接口
+
+- `vec4` / `gl_Position`，替换权宜的 `v_clip_*`。
+- 透视正确的 varying 传递约定。
+
+### S2 — 片元着色器进同一套 VM
+
+- 片元 bytecode / 解释器与透视校正 varying。
+- 学习目标：管线在「顶点之后还有一次按像素的程序」。
+
+### S3 — 深度测试（最小固定功能）
+
+- 深度缓冲与最小 depth test。
+
+### S4 — 绘制入口与属性拉取（仍非完整状态机）
+
+- buffer 属性拉取、`drawArrays`（及后续 `drawElements`）。
+- 学习目标：原生里「绑定缓冲 + draw*」如何驱动整条管线；当前的 `draw_shader_triangle` 降为夹具或内部路径。
+
+### S5 — 可变光栅状态（子集）
+
+- viewport、cull、scissor、blend 等子集；`getError` 视需要。
+
+### S6 — 读回、呈现与调试体验
+
+- `present` / `readPixels`、单步调试 UI。
+- 与原生 oracle 的精确 RGBA 对照（若对照页存在）继续只比参考帧与原生帧，不把宿主 GPU 接进本 crate。
+
+### S7 — 更后的学习里程碑（不提前冒充进度）
+
+- 光照旋转立方体：依赖 S1–S5 的向量、FS、深度与 draw 入口。
+- JavaScript 形状的 adapter 仍放最后，且**永远不是**浏览器原生 `WebGL2RenderingContext`。
+
+## 建议顺序
+
+1. **S1**：`vec4` / `gl_Position`，替换权宜的 `v_clip_*`。
+2. **S2**：片元 bytecode / 解释器与透视校正 varying。
+3. **S3**：深度缓冲与最小 depth test。
+4. **S4–S5**：buffer 属性拉取、`drawArrays`、viewport 等状态子集。
+5. **S6**：`present` / `readPixels`、单步调试 UI；需要时再接原生对照 oracle。
+6. 并行：glslang accept/reject CI；立方体/光照放在 S1–S5 之后。
+7. 最后：非原生的 JavaScript adapter 形状。
