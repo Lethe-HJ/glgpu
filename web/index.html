@@ -25,6 +25,8 @@
     -->
     <script src="./coop-coep.js"></script>
     <script type="module">
+      import { openPresentWorker } from "./present-slots.js";
+
       const wantsThreads = new URLSearchParams(location.search).get("threads") === "1";
       const maxRayonWorkers = 8;
 
@@ -68,6 +70,21 @@
         const logicalCpus = navigator.hardwareConcurrency || 1;
         await wasm.initThreadPool(Math.min(maxRayonWorkers, Math.max(1, logicalCpus - 1)));
         wasm.boot(true);
+      }
+
+      if (!wantsThreads) {
+        const present = openPresentWorker("./webgpu-worker.js");
+        window.glgpuQueueTriangle = (coords, x, y) =>
+          present.queueCommand((info) => {
+            if (coords.length !== 21) {
+              throw new Error("triangle command must hold 21 floats");
+            }
+            new Float32Array(info.buffer, info.commandAddr, 21).set(coords);
+            const selected = new Uint32Array(info.buffer, info.commandAddr + 84, 2);
+            selected[0] = x;
+            selected[1] = y;
+            Atomics.store(new Int32Array(info.buffer), info.commandLenAddr / 4, 92);
+          }, { kind: "triangle" });
       }
 
       if (!reloadingForIsolation) {

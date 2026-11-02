@@ -1,11 +1,16 @@
-//! Debug page for the CPU WebGL2 learning track.
+//! Demo page for webgl-mock.
 //!
 //! This crate is a second Wasm entry point. It depends only on `glgpu-webgl`
 //! and talks to the browser through Canvas 2D `putImageData`. It does not call
 //! `getContext("webgl")`, `getContext("webgl2")`, or `navigator.gpu`, and it
-//! does not link the WebGPU-track crates.
+//! does not link the webgpu-mock crates.
 //!
-//! The permanent banner stays `CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT`.
+//! When `SharedArrayBuffer` is available, the page queues ESSL into the worker
+//! buffer and presents the front slot from JavaScript. This module then copies
+//! that front slot into the inspector. Without a shared buffer, the same
+//! raster runs on the main thread. There is no OffscreenCanvas.
+//!
+//! The permanent banner stays `webgl-mock — NOT WEBGL CONFORMANT`.
 
 #![forbid(unsafe_code)]
 
@@ -21,7 +26,7 @@ mod app {
         self, DEMO_ESSL, MAX_ESSL_BYTES, PREVIEW_HEIGHT, PREVIEW_WIDTH, SAVED_ESSL_KEY,
         format_tracked_pixel, highlight_overlay_html, line_numbers_html, utf8_span_to_utf16_range,
     };
-    use glgpu_webgl::{LearningContext, P0_MILESTONE_CLEAR, WebGl2LearningTrack};
+    use glgpu_webgl::{DemoContext, P0_MILESTONE_CLEAR, WebGlMock};
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::prelude::*;
@@ -31,7 +36,7 @@ mod app {
     };
 
     struct DemoState {
-        context: LearningContext,
+        context: DemoContext,
         canvas_context: CanvasRenderingContext2d,
         canvas: HtmlCanvasElement,
         metrics: HtmlElement,
@@ -53,6 +58,23 @@ mod app {
         essl_summary: String,
     }
 
+    fn queue_worker_frame(source: &str) -> bool {
+        let Some(window) = web_sys::window() else {
+            return false;
+        };
+        let Ok(value) = js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("glgpuQueueEssl"))
+        else {
+            return false;
+        };
+        let Ok(func) = value.dyn_into::<js_sys::Function>() else {
+            return false;
+        };
+        func.call1(&JsValue::NULL, &JsValue::from_str(source))
+            .ok()
+            .and_then(|queued| queued.as_bool())
+            .unwrap_or(false)
+    }
+
     impl DemoState {
         fn compile_editor(&mut self, run_after_compile: bool) -> Result<bool, JsValue> {
             let source = self.editor.value();
@@ -71,22 +93,43 @@ mod app {
 
             if run_after_compile {
                 let started = js_sys::Date::now();
-                match editor::render_preview(&source) {
-                    Ok(context) => {
-                        self.context = context;
-                        self.show_success(&source, &compiled.functions, true)?;
-                        self.present(started)?;
-                        self.show_selected_pixel();
-                    }
-                    Err(diagnostic) => {
-                        self.show_run_error(&source, &diagnostic.message);
-                        return Ok(false);
+                if queue_worker_frame(&source) {
+                    self.show_success(&source, &compiled.functions, true)?;
+                    self.metrics.set_text_content(Some(
+                        "worker raster · command bytes are in the shared buffer",
+                    ));
+                } else {
+                    match editor::render_preview(&source) {
+                        Ok(context) => {
+                            self.context = context;
+                            self.show_success(&source, &compiled.functions, true)?;
+                            self.present(started)?;
+                            self.show_selected_pixel();
+                        }
+                        Err(diagnostic) => {
+                            self.show_run_error(&source, &diagnostic.message);
+                            return Ok(false);
+                        }
                     }
                 }
             } else {
                 self.show_success(&source, &compiled.functions, false)?;
             }
             Ok(true)
+        }
+
+        fn note_worker_frame(&mut self, pixels: &[u8]) {
+            if !self.context.copy_from_rgba8_bytes(pixels) {
+                return;
+            }
+            self.frame_serial = self.frame_serial.saturating_add(1);
+            self.metrics.set_text_content(Some(&format!(
+                "frame {} · worker front slot · hash {:016x} · CPU interpreter · {}",
+                self.frame_serial,
+                self.context.stable_hash64(),
+                self.essl_summary,
+            )));
+            self.show_selected_pixel();
         }
 
         fn present(&mut self, started: f64) -> Result<(), JsValue> {
@@ -302,7 +345,7 @@ mod app {
 
         let header = element(&document, "header", "hero")?;
         let eyebrow = element(&document, "div", "eyebrow")?;
-        eyebrow.set_text_content(Some("CPU WEBGL2 LEARNING TRACK"));
+        eyebrow.set_text_content(Some("WEBGL-MOCK"));
         let title = element(&document, "h1", "")?;
         title.set_text_content(Some("GLGPU WebGL Debug Lab"));
         let subtitle = element(&document, "p", "subtitle")?;
@@ -371,7 +414,7 @@ mod app {
 
         let execution_boundary = element(&document, "div", "execution-boundary")?;
         let boundary_label = element(&document, "strong", "")?;
-        boundary_label.set_text_content(Some("学习切片边界"));
+        boundary_label.set_text_content(Some("Demo 绘制路径"));
         let boundary_text = element(&document, "span", "")?;
         boundary_text.set_text_content(Some(
             "运行会绑定 u_scale=1.0 和示例的三个顶点属性，执行 main，再按 clip 体积 -w..w 光栅化。子集以外的 ESSL 会被拒绝。这不是 drawArrays。",
@@ -442,7 +485,7 @@ mod app {
         canvas.set_width(PREVIEW_WIDTH);
         canvas.set_height(PREVIEW_HEIGHT);
         canvas.set_class_name("viewport");
-        canvas.set_attribute("aria-label", "GLGPU CPU-rendered WebGL learning output")?;
+        canvas.set_attribute("aria-label", "GLGPU webgl-mock triangle demo")?;
         let canvas_context: CanvasRenderingContext2d = canvas
             .get_context("2d")?
             .ok_or_else(|| JsValue::from_str("Canvas 2D context is unavailable"))?
@@ -472,7 +515,7 @@ mod app {
         append(&layout, &preview_column)?;
         append(&root, &layout)?;
 
-        let mut context = WebGl2LearningTrack::new()
+        let mut context = WebGlMock::new()
             .create_context(PREVIEW_WIDTH, PREVIEW_HEIGHT)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         context.clear(P0_MILESTONE_CLEAR);
@@ -500,6 +543,7 @@ mod app {
             frame_serial: 0,
             essl_summary: "ESSL not compiled".to_owned(),
         }));
+        install_present_hooks(&state);
         {
             let mut state = state.borrow_mut();
             if !state.compile_editor(true)? {
@@ -626,6 +670,43 @@ mod app {
         Ok(())
     }
 
+    fn install_present_hooks(state: &Rc<RefCell<DemoState>>) {
+        let window = web_sys::window().expect("window");
+        let presented = Rc::clone(state);
+        let on_frame = Closure::<dyn FnMut(JsValue, JsValue)>::new(
+            move |_message: JsValue, pixels: JsValue| {
+                if pixels.is_null() || pixels.is_undefined() {
+                    return;
+                }
+                let array = js_sys::Uint8Array::new(&pixels);
+                let mut bytes = vec![0_u8; array.length() as usize];
+                array.copy_to(&mut bytes);
+                presented.borrow_mut().note_worker_frame(&bytes);
+            },
+        );
+        js_sys::Reflect::set(
+            window.as_ref(),
+            &JsValue::from_str("glgpuOnPresentedFrame"),
+            on_frame.as_ref(),
+        )
+        .ok();
+        on_frame.forget();
+
+        let replay = Rc::clone(state);
+        let on_replay = Closure::<dyn FnMut()>::new(move || {
+            if let Err(error) = replay.borrow_mut().compile_editor(true) {
+                web_sys::console::error_1(&error);
+            }
+        });
+        js_sys::Reflect::set(
+            window.as_ref(),
+            &JsValue::from_str("glgpuReplayLocal"),
+            on_replay.as_ref(),
+        )
+        .ok();
+        on_replay.forget();
+    }
+
     fn capability_text(window: &web_sys::Window) -> String {
         let isolated =
             js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("crossOriginIsolated"))
@@ -636,7 +717,7 @@ mod app {
             js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("SharedArrayBuffer"))
                 .unwrap_or(false);
         format!(
-            "track=CpuWebGl2LearningTrack · build=ST · backend=cpu-from-scratch · crossOriginIsolated={} · SharedArrayBuffer={} · logical CPUs={}",
+            "stack=webgl-mock · present=canvas2d · backend=cpu-from-scratch · crossOriginIsolated={} · SharedArrayBuffer={} · logical CPUs={}",
             isolated,
             has_shared_array_buffer,
             window.navigator().hardware_concurrency(),

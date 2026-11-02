@@ -222,6 +222,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "glgpu-webgl-worker"
+version = "0.1.0"
+dependencies = [
+ "glgpu-webgl",
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "glgpu-webgpu"
 version = "0.1.0"
 dependencies = [
@@ -229,6 +238,17 @@ dependencies = [
  "glgpu-raster",
  "glgpu-shader",
  "glgpu-trace",
+]
+
+[[package]]
+name = "glgpu-webgpu-worker"
+version = "0.1.0"
+dependencies = [
+ "glgpu-core",
+ "glgpu-trace",
+ "glgpu-webgpu",
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]

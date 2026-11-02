@@ -17,12 +17,27 @@
         <p class="site-nav-note">切换会重新加载页面</p>
       </div>
     </header>
-    <main id="app">正在载入 GLGPU WebGL 学习轨道…</main>
+    <main id="app">正在载入 GLGPU 模拟 WebGL…</main>
     <!--
       独立于 WebGPU 的 Wasm 入口。相对 URL 同时覆盖本地 `/` 和 GitHub Pages `/<repo>/`。
-      不要添加 base 元素。这一页不加载多线程包，也不注册 Pages 隔离 worker。
+      不要添加 base 元素。这一页不加载 webgpu-mock 的多线程包，也不注册 Pages 隔离 worker。
+      页面已经跨源隔离时，光栅在 webgl-worker 里，像素槽在 SharedArrayBuffer。
+      未隔离时没有 SharedArrayBuffer，光栅退回主线程。
     -->
     <script type="module">
+      import { openPresentWorker } from "./present-slots.js";
+
+      const present = openPresentWorker("./webgl-worker.js");
+      window.glgpuQueueEssl = (source) =>
+        present.queueCommand((info) => {
+          const encoded = new TextEncoder().encode(source);
+          if (encoded.length > info.commandCap) {
+            throw new Error("ESSL command does not fit in the shared region");
+          }
+          new Uint8Array(info.buffer, info.commandAddr, encoded.length).set(encoded);
+          Atomics.store(new Int32Array(info.buffer), info.commandLenAddr / 4, encoded.length);
+        }, { kind: "essl" });
+
       try {
         const wasm = await import("./pkg-webgl/glgpu_webgl_web.js");
         await wasm.default();

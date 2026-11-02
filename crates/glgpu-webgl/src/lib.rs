@@ -1,8 +1,16 @@
-//! CPU-only WebGL 2 learning track.
+//! webgl-mock: a WebGL2-style visualization running on the CPU.
 //!
-//! This crate is a separate stack from the WebGPU path. It does not depend on
-//! `glgpu-webgpu`, `glgpu-shader`, `glgpu-core`, or the other WebGPU-track
+//! This crate is not native WebGL and not native WebGPU. It does not depend on
+//! `glgpu-webgpu`, `glgpu-shader`, `glgpu-core`, or the other webgpu-mock
 //! crates, and it does not call browser WebGL or WebGPU.
+//!
+//! Target split: one SharedArrayBuffer holds two pixel slots and the command
+//! bytes. The writable back slot is the logical drawing buffer and the Wasm
+//! view maps onto it. Atomics hand the front slot to the main thread for
+//! Canvas 2D present. There is no OffscreenCanvas blit and no per-frame copy
+//! from a second full-frame framebuffer. `glgpu-webgl-worker` runs this path
+//! when the page has a SharedArrayBuffer. Without one, the demo page still
+//! rasterizes on the main thread.
 //!
 //! The compile path is ESSL source, then an AST, then self-authored bytecode,
 //! then a CPU interpreter. There is no machine-code JIT. Instruction spans and
@@ -10,13 +18,14 @@
 //!
 //! Khronos glslang 16.6.0 is the ESSL accept/reject reference. Naga desktop
 //! GLSL is not an ESSL frontend. The label stays `NOT WEBGL CONFORMANT`.
-//! See `docs/webgl2-learning-track.zh-CN.md`.
+//! See `docs/webgl-mock.zh-CN.md`.
 
 #![forbid(unsafe_code)]
 
 mod clip;
 mod essl;
 mod framebuffer;
+mod present;
 mod raster;
 mod vm;
 
@@ -28,7 +37,8 @@ pub use essl::{
     Expr, FrontendError, Function, InterfaceSymbol, SourceSpan, Statement, TranslationUnit,
     parse_essl_subset,
 };
-pub use framebuffer::{ContextError, LearningContext, Rgba8};
+pub use framebuffer::{ContextError, DemoContext, Rgba8};
+pub use present::{DoubleBuffer, PresentError, render_essl_demo};
 pub use raster::{
     P0_MILESTONE_CLEAR, RasterError, ScreenTriangle, ScreenVertex, ShaderDrawError,
     ShaderTriangleDraw, p0_milestone_clip_vertices, p0_milestone_triangle,
@@ -42,11 +52,14 @@ pub use vm::{
 use std::error::Error;
 use std::fmt;
 
-/// Permanent banner for this track. Do not rewrite it into a conformance claim.
-pub const CONFORMANCE_BANNER: &str = "CpuWebGl2LearningTrack — NOT WEBGL CONFORMANT";
+/// Permanent banner. Do not rewrite it into a conformance claim.
+pub const CONFORMANCE_BANNER: &str = "webgl-mock — NOT WEBGL CONFORMANT";
 
-/// What this track is for.
-pub const LEARNING_GOAL: &str = "Implement a complete WebGL2-style stack from scratch on the CPU for learning, with no browser-native WebGL or WebGPU.";
+/// What webgl-mock is. Native WebGL and native WebGPU stay outside this crate.
+pub const WEBGL_MOCK: &str = "webgl-mock is a WebGL2-style visualization running on the CPU. It is not native WebGL and not native WebGPU.";
+
+/// Target thread split versus the demo page today.
+pub const THREADING: &str = "Decided 2026-10-28: double-buffered SharedArrayBuffer. Front slot is for main-thread Canvas 2D present. Back slot is for Worker raster and is the logical drawing buffer; the Wasm view maps onto that slot. Handoff uses Atomics for the frame index and which slot is readable. Do not transfer away the sole buffer. Do not keep an extra full-frame framebuffer copied into the SharedArrayBuffer each frame, except later for an offscreen FBO or a non-present size. Triple buffering is not the default and is only for measured present stalls. A zero-copy transfer of a duplicate snapshot is not the primary path. There is no OffscreenCanvas blit. The pipeline does not draw to the visible page canvas. Messaging of pixel payloads is not a copied postMessage. The back slot is authoritative for raster results, framebuffer hash, unit tests, and pixel debugging. The worker kernel is glgpu-webgl-worker. Commands are bytes in the same SharedArrayBuffer plus an Atomics sequence. When SharedArrayBuffer is available the demo draws in that worker and presents the front slot. Otherwise the same raster stays on the main thread.";
 
 /// Lowering and execution shape. JIT is intentionally absent.
 pub const COMPILE_PATH: &str =
@@ -55,23 +68,23 @@ pub const COMPILE_PATH: &str =
 /// External oracle. This crate does not invoke it.
 pub const ESSL_REFERENCE: &str = "Khronos glslang 16.6.0 is the ESSL accept/reject reference. Naga desktop GLSL is not an ESSL frontend.";
 
-/// The only backend this track is allowed to grow.
+/// The only backend webgl-mock is allowed to grow.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Backend {
-    /// Software reference written in this crate. No host GPU API is linked.
+    /// CPU implementation in this crate. No native WebGL or native WebGPU API is linked.
     CpuFromScratch,
 }
 
-/// Specification profile under study.
+/// Specification profile this CPU stack follows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LearningProfile {
-    /// Khronos WebGL 2.0 studied as a CPU reference, not as a browser context.
+pub enum SpecProfile {
+    /// Khronos WebGL 2.0 as a CPU reference, not as a browser context.
     WebGl2,
 }
 
-/// Named rows in the learning-track support matrix.
+/// Named rows in the webgl-mock support matrix.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TrackCapability {
+pub enum Capability {
     ContextCreation,
     Rgba8Clear,
     ScreenSpaceTriangle,
@@ -87,7 +100,7 @@ pub enum TrackCapability {
     HostWebGlOrWebGpu,
 }
 
-impl TrackCapability {
+impl Capability {
     pub const ALL: [Self; 13] = [
         Self::ContextCreation,
         Self::Rgba8Clear,
@@ -105,7 +118,7 @@ impl TrackCapability {
     ];
 }
 
-/// Honest support state. Partial means a learning subset exists and is not the WebGL entry point.
+/// Honest support state. Partial means a CPU subset exists and is not the WebGL entry point.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SupportStatus {
     Supported,
@@ -116,7 +129,7 @@ pub enum SupportStatus {
 /// Returned when a caller asks the matrix to treat a gap as supported.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CapabilityBlocked {
-    pub capability: TrackCapability,
+    pub capability: Capability,
     pub status: SupportStatus,
     pub reason: &'static str,
 }
@@ -125,7 +138,7 @@ impl fmt::Display for CapabilityBlocked {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "WebGL2 learning capability {:?} is {:?}: {}",
+            "webgl-mock capability {:?} is {:?}: {}",
             self.capability, self.status, self.reason
         )
     }
@@ -133,11 +146,11 @@ impl fmt::Display for CapabilityBlocked {
 
 impl Error for CapabilityBlocked {}
 
-/// Entry point for the parallel WebGL2 learning track.
+/// Entry point for the parallel webgl-mock stack.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct WebGl2LearningTrack;
+pub struct WebGlMock;
 
-impl WebGl2LearningTrack {
+impl WebGlMock {
     pub const ALLOWS_HOST_WEBGL: bool = false;
     pub const ALLOWS_HOST_WEBGPU: bool = false;
     pub const ALLOWS_NAVIGATOR_GPU: bool = false;
@@ -151,8 +164,8 @@ impl WebGl2LearningTrack {
         Backend::CpuFromScratch
     }
 
-    pub const fn profile(self) -> LearningProfile {
-        LearningProfile::WebGl2
+    pub const fn profile(self) -> SpecProfile {
+        SpecProfile::WebGl2
     }
 
     pub const fn conformant(self) -> bool {
@@ -163,64 +176,64 @@ impl WebGl2LearningTrack {
         CONFORMANCE_BANNER
     }
 
-    /// Create a CPU learning framebuffer.
+    /// Create a CPU demo framebuffer for webgl-mock.
     ///
     /// The result is not a WebGL context. `require(ContextCreation)` stays
     /// blocked because the matrix row is only partial.
-    pub fn create_context(self, width: u32, height: u32) -> Result<LearningContext, ContextError> {
-        LearningContext::new(width, height)
+    pub fn create_context(self, width: u32, height: u32) -> Result<DemoContext, ContextError> {
+        DemoContext::new(width, height)
     }
 
-    pub const fn status(self, capability: TrackCapability) -> SupportStatus {
+    pub const fn status(self, capability: Capability) -> SupportStatus {
         match capability {
-            TrackCapability::Rgba8Clear => SupportStatus::Supported,
-            TrackCapability::ContextCreation
-            | TrackCapability::ScreenSpaceTriangle
-            | TrackCapability::Essl300Frontend
-            | TrackCapability::BytecodeIr
-            | TrackCapability::CpuInterpreter => SupportStatus::Partial,
-            TrackCapability::MutableStateMachine
-            | TrackCapability::DrawCall
-            | TrackCapability::ReadPixels
-            | TrackCapability::ExplicitPresent
-            | TrackCapability::SingleStepDebugger
-            | TrackCapability::JavaScriptFacade
-            | TrackCapability::HostWebGlOrWebGpu => SupportStatus::NotStarted,
+            Capability::Rgba8Clear => SupportStatus::Supported,
+            Capability::ContextCreation
+            | Capability::ScreenSpaceTriangle
+            | Capability::Essl300Frontend
+            | Capability::BytecodeIr
+            | Capability::CpuInterpreter => SupportStatus::Partial,
+            Capability::MutableStateMachine
+            | Capability::DrawCall
+            | Capability::ReadPixels
+            | Capability::ExplicitPresent
+            | Capability::SingleStepDebugger
+            | Capability::JavaScriptFacade
+            | Capability::HostWebGlOrWebGpu => SupportStatus::NotStarted,
         }
     }
 
-    pub const fn detail(self, capability: TrackCapability) -> &'static str {
+    pub const fn detail(self, capability: Capability) -> &'static str {
         match capability {
-            TrackCapability::ContextCreation => {
-                "CPU learning framebuffer only; not a WebGL2RenderingContext"
+            Capability::ContextCreation => {
+                "webgl-mock demo framebuffer only; not native WebGL2RenderingContext"
             }
-            TrackCapability::Rgba8Clear => "RGBA8 clear of the learning framebuffer",
-            TrackCapability::ScreenSpaceTriangle => {
+            Capability::Rgba8Clear => "RGBA8 clear of the CPU framebuffer",
+            Capability::ScreenSpaceTriangle => {
                 "WebGL clip volume -w..w, bottom-left window, transitional top-left storage; shader outputs can drive one triangle; not drawArrays"
             }
-            TrackCapability::Essl300Frontend => {
+            Capability::Essl300Frontend => {
                 "subset lexer/parser for #version 300 es, scalar uniforms, ins, outs, and one multiplication; glslang is not called"
             }
-            TrackCapability::BytecodeIr => {
+            Capability::BytecodeIr => {
                 "self-authored bytecode with statement spans, including uniform, input, output, and mul ops"
             }
-            TrackCapability::CpuInterpreter => {
+            Capability::CpuInterpreter => {
                 "CPU interpreter for load_const, move, mul, and uniform/input/output traffic, with spans and local snapshots; no JIT"
             }
-            TrackCapability::MutableStateMachine => "the WebGL state machine is not started",
-            TrackCapability::DrawCall => "drawArrays and drawElements are not implemented",
-            TrackCapability::ReadPixels => "synchronous readPixels is not implemented",
-            TrackCapability::ExplicitPresent => {
-                "LearningContext has no present method. A separate debug page copies RGBA8 with Canvas 2D putImageData; that copy is not a WebGL present entry point"
+            Capability::MutableStateMachine => "the WebGL state machine is not started",
+            Capability::DrawCall => "drawArrays and drawElements are not implemented",
+            Capability::ReadPixels => "synchronous readPixels is not implemented",
+            Capability::ExplicitPresent => {
+                "DemoContext has no present method. The current demo copies RGBA8 onto the page canvas with Canvas 2D putImageData on the main thread. The target present path is a double-buffered SharedArrayBuffer. There is no OffscreenCanvas blit. This copy is not native WebGL present"
             }
-            TrackCapability::SingleStepDebugger => {
+            Capability::SingleStepDebugger => {
                 "spans, local snapshots, and interface snapshots exist, but there is no single-step pause UI. The debug page runs the whole frame; it does not step"
             }
-            TrackCapability::JavaScriptFacade => {
-                "no JavaScript WebGL facade. The debug page is a separate Wasm shell, and these objects are not browser WebGL objects"
+            Capability::JavaScriptFacade => {
+                "no JavaScript WebGL facade. The target main thread reaches the Worker through a double-buffered SharedArrayBuffer and Atomics, not a copied postMessage of pixel payloads. Today the demo shell runs webgl-mock on the main thread. These objects are not native WebGL objects"
             }
-            TrackCapability::HostWebGlOrWebGpu => {
-                "host WebGLRenderingContext and navigator.gpu are forbidden backends"
+            Capability::HostWebGlOrWebGpu => {
+                "native WebGLRenderingContext and navigator.gpu are forbidden backends"
             }
         }
     }
@@ -229,7 +242,7 @@ impl WebGl2LearningTrack {
     ///
     /// Partial rows have their own methods. They are not a promise that the
     /// corresponding WebGL entry point exists.
-    pub const fn require(self, capability: TrackCapability) -> Result<(), CapabilityBlocked> {
+    pub const fn require(self, capability: Capability) -> Result<(), CapabilityBlocked> {
         match self.status(capability) {
             SupportStatus::Supported => Ok(()),
             status => Err(CapabilityBlocked {
@@ -246,89 +259,92 @@ mod tests {
     use super::*;
 
     #[test]
-    fn track_stays_cpu_only_and_non_conformant() {
-        let track = WebGl2LearningTrack::new();
+    fn cpu_stack_stays_non_conformant() {
+        let cpu = WebGlMock::new();
 
-        assert_eq!(track.backend(), Backend::CpuFromScratch);
-        assert_eq!(track.profile(), LearningProfile::WebGl2);
-        assert!(!track.conformant());
-        assert_eq!(track.banner(), CONFORMANCE_BANNER);
-        assert!(track.banner().contains("NOT WEBGL CONFORMANT"));
-        assert!(LEARNING_GOAL.contains("from scratch on the CPU"));
-        assert!(LEARNING_GOAL.contains("no browser-native WebGL or WebGPU"));
+        assert_eq!(cpu.backend(), Backend::CpuFromScratch);
+        assert_eq!(cpu.profile(), SpecProfile::WebGl2);
+        assert!(!cpu.conformant());
+        assert_eq!(cpu.banner(), CONFORMANCE_BANNER);
+        assert!(cpu.banner().contains("webgl-mock"));
+        assert!(cpu.banner().contains("NOT WEBGL CONFORMANT"));
+        assert!(!cpu.banner().to_ascii_lowercase().contains("learning"));
+        assert!(WEBGL_MOCK.contains("webgl-mock"));
+        assert!(WEBGL_MOCK.contains("running on the CPU"));
+        assert!(WEBGL_MOCK.contains("not native WebGL"));
+        assert!(WEBGL_MOCK.contains("not native WebGPU"));
+        assert!(!WEBGL_MOCK.to_ascii_lowercase().contains("learning"));
+        assert!(THREADING.contains("double-buffered SharedArrayBuffer"));
+        assert!(THREADING.contains("Atomics"));
+        assert!(THREADING.contains("Back slot"));
+        assert!(THREADING.contains("Triple buffering is not the default"));
+        assert!(THREADING.contains("There is no OffscreenCanvas blit"));
+        assert!(THREADING.contains("authoritative"));
+        assert!(THREADING.contains("not a copied postMessage"));
+        assert!(THREADING.contains("glgpu-webgl-worker"));
+        assert!(THREADING.contains("Otherwise the same raster stays on the main thread"));
+        assert!(!THREADING.contains("Worker backend is not built yet"));
+        assert!(!THREADING.contains("Scheme C"));
         assert!(COMPILE_PATH.contains("CPU interpreter"));
         assert!(COMPILE_PATH.contains("no machine-code JIT"));
         assert!(ESSL_REFERENCE.contains("glslang 16.6.0"));
         assert!(ESSL_REFERENCE.contains("Naga desktop GLSL is not an ESSL frontend"));
         const {
-            assert!(!WebGl2LearningTrack::ALLOWS_HOST_WEBGL);
-            assert!(!WebGl2LearningTrack::ALLOWS_HOST_WEBGPU);
-            assert!(!WebGl2LearningTrack::ALLOWS_NAVIGATOR_GPU);
-            assert!(!WebGl2LearningTrack::ALLOWS_WEBGL_RENDERING_CONTEXT);
+            assert!(!WebGlMock::ALLOWS_HOST_WEBGL);
+            assert!(!WebGlMock::ALLOWS_HOST_WEBGPU);
+            assert!(!WebGlMock::ALLOWS_NAVIGATOR_GPU);
+            assert!(!WebGlMock::ALLOWS_WEBGL_RENDERING_CONTEXT);
         }
     }
 
     #[test]
-    fn matrix_matches_the_learning_slice() {
-        let track = WebGl2LearningTrack::new();
-        assert_eq!(TrackCapability::ALL.len(), 13);
-        assert_eq!(
-            track.status(TrackCapability::Rgba8Clear),
-            SupportStatus::Supported
-        );
-        assert!(track.require(TrackCapability::Rgba8Clear).is_ok());
+    fn matrix_matches_the_cpu_slice() {
+        let cpu = WebGlMock::new();
+        assert_eq!(Capability::ALL.len(), 13);
+        assert_eq!(cpu.status(Capability::Rgba8Clear), SupportStatus::Supported);
+        assert!(cpu.require(Capability::Rgba8Clear).is_ok());
 
         for capability in [
-            TrackCapability::ContextCreation,
-            TrackCapability::ScreenSpaceTriangle,
-            TrackCapability::Essl300Frontend,
-            TrackCapability::BytecodeIr,
-            TrackCapability::CpuInterpreter,
+            Capability::ContextCreation,
+            Capability::ScreenSpaceTriangle,
+            Capability::Essl300Frontend,
+            Capability::BytecodeIr,
+            Capability::CpuInterpreter,
         ] {
-            assert_eq!(track.status(capability), SupportStatus::Partial);
-            let blocked = track
+            assert_eq!(cpu.status(capability), SupportStatus::Partial);
+            let blocked = cpu
                 .require(capability)
                 .expect_err("partial is not supported");
             assert_eq!(blocked.status, SupportStatus::Partial);
         }
 
         for capability in [
-            TrackCapability::MutableStateMachine,
-            TrackCapability::DrawCall,
-            TrackCapability::ReadPixels,
-            TrackCapability::ExplicitPresent,
-            TrackCapability::SingleStepDebugger,
-            TrackCapability::JavaScriptFacade,
-            TrackCapability::HostWebGlOrWebGpu,
+            Capability::MutableStateMachine,
+            Capability::DrawCall,
+            Capability::ReadPixels,
+            Capability::ExplicitPresent,
+            Capability::SingleStepDebugger,
+            Capability::JavaScriptFacade,
+            Capability::HostWebGlOrWebGpu,
         ] {
-            assert_eq!(track.status(capability), SupportStatus::NotStarted);
-            let blocked = track.require(capability).expect_err("absent");
+            assert_eq!(cpu.status(capability), SupportStatus::NotStarted);
+            let blocked = cpu.require(capability).expect_err("absent");
             assert_eq!(blocked.status, SupportStatus::NotStarted);
             assert!(!blocked.reason.is_empty());
         }
 
-        let context = track.create_context(2, 2).expect("cpu context");
+        let context = cpu.create_context(2, 2).expect("cpu context");
         assert!(context.banner().contains("NOT WEBGL CONFORMANT"));
-        assert_eq!(track.create_context(0, 4), Err(ContextError::EmptyExtent));
+        assert_eq!(cpu.create_context(0, 4), Err(ContextError::EmptyExtent));
         assert!(
-            track
-                .detail(TrackCapability::ScreenSpaceTriangle)
+            cpu.detail(Capability::ScreenSpaceTriangle)
                 .contains("-w..w")
         );
         assert!(
-            track
-                .detail(TrackCapability::ScreenSpaceTriangle)
+            cpu.detail(Capability::ScreenSpaceTriangle)
                 .contains("bottom-left")
         );
-        assert!(
-            track
-                .detail(TrackCapability::DrawCall)
-                .contains("not implemented")
-        );
-        assert!(
-            track
-                .detail(TrackCapability::CpuInterpreter)
-                .contains("no JIT")
-        );
+        assert!(cpu.detail(Capability::DrawCall).contains("not implemented"));
+        assert!(cpu.detail(Capability::CpuInterpreter).contains("no JIT"));
     }
 }

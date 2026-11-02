@@ -5,7 +5,7 @@
 > 适用范围：`CpuGpuSubset`、CPU triangle raster、WGSL parse/validate、Canvas 2D ST/MT 演示  
 > 规范与能力边界以 [`spec-lock.toml`](../spec-lock.toml) 和 [`webgpu-p0.toml`](support-matrix/webgpu-p0.toml) 为准
 
-`glgpu-webgl` 的测试锁定这条独立学习栈：非 WebGL 合规、禁止宿主 WebGL / WebGPU、RGBA8 clear、WebGL clip 体积 `-w..w`、左下窗口、shader 驱动的三角形、ESSL 子集解析，以及 CPU 解释器的源码 span 和逐步局部变量记录。那些测试不是 WebGL 验收，也不扩大本文的 P0 范围。
+`glgpu-webgl` 的测试锁定 webgl-mock：不是原生 WebGL、不是合规实现、禁止原生 WebGL / 原生 WebGPU、RGBA8 clear、WebGL clip 体积 `-w..w`、左下窗口、shader 驱动的三角形 demo、ESSL 子集解析，以及 CPU 解释器的源码 span 和逐步局部变量记录。那些测试不是 WebGL 验收，也不扩大本文的 P0 范围。demo 页当前仍是主线程单线程 Wasm，并用 `putImageData` 直接交到页面 canvas。2026-10-28 已决定：hash 和测试的权威像素是 SharedArrayBuffer 双缓冲里可写的 back 槽。主线程呈现 front 槽。不使用 OffscreenCanvas，三缓冲不是默认。这次不实现 Worker 后端。
 
 ## 1. 文档目的与判定原则
 
@@ -124,6 +124,7 @@ cargo test -p glgpu-webgpu --features parallel
 cargo xtask build-web --release
 cargo xtask build-web-mt
 cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web
+cargo xtask build-present-workers
 ```
 
 预期产物：
@@ -135,9 +136,13 @@ web/pkg-mt/glgpu_web.js
 web/pkg-mt/glgpu_web_bg.wasm
 web/pkg-webgl/glgpu_webgl_web.js
 web/pkg-webgl/glgpu_webgl_web_bg.wasm
+web/pkg-webgl-worker/glgpu_webgl_worker.js
+web/pkg-webgl-worker/glgpu_webgl_worker_bg.wasm
+web/pkg-webgpu-worker/glgpu_webgpu_worker.js
+web/pkg-webgpu-worker/glgpu_webgpu_worker_bg.wasm
 ```
 
-`pkg-webgl` 是学习页的独立 ST 包。它不参与 WebGPU 的 ST/MT hash 对比。
+`pkg-webgl` 是 webgl-mock 的编辑器壳，不参与 webgpu-mock 的 ST/MT hash 对比。隔离页面另加载 `pkg-webgl-worker`。没有 SharedArrayBuffer 时壳自己在主线程光栅。`node web/smoke-present.mjs` 检查两个 worker 的共享内存和 front 槽像素；它要在 `build-present-workers` 之后运行。
 
 `build-web-mt` 是无参数的锁定命令；传入 `--release` 或其他覆盖参数应失败。它必须使用：
 

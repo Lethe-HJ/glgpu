@@ -162,7 +162,7 @@ glgpu/
 │   ├── glgpu-raster/           # 16×16 tile 确定性 CPU 光栅器
 │   ├── glgpu-shader/           # Naga WGSL parse/validate 和诊断边界
 │   ├── glgpu-webgpu/           # Rust-native CpuGpuSubset、encoder、即时 queue
-│   ├── glgpu-webgl/            # 独立 CPU WebGL2 学习栈：clip、shader 三角形；不依赖 WebGPU 轨道
+│   ├── glgpu-webgl/            # webgl-mock：clip、shader 三角形 demo；不依赖 webgpu-mock crate
 │   ├── glgpu-webgl-web/        # WebGL 调试页 Wasm 壳；只依赖 glgpu-webgl
 │   ├── glgpu-canvas2d/         # RGBA8 校验和 Canvas ImageData 呈现
 │   └── glgpu-web/              # WebGPU wasm-bindgen 导出、Rust DOM/UI、P0 demo
@@ -176,21 +176,23 @@ glgpu/
 │   ├── architecture-plan.zh-CN.md
 │   ├── roadmap.zh-CN.md
 │   ├── adr/                    # 已接受的架构决策
-│   └── support-matrix/         # P0 矩阵，以及 WebGL2 学习轨道矩阵
+│   └── support-matrix/         # webgpu-mock 的 P0 矩阵，以及 webgl-mock 矩阵
 ├── web/
 │   ├── index.html              # WebGPU ST/MT loader、顶栏和 #app mount point
-│   ├── webgl.html              # WebGL 学习页 loader；独立 Wasm 入口
+│   ├── webgl.html              # webgl-mock 编辑器 loader；隔离时把绘制交给 worker
 │   ├── api-nav.css             # 顶栏样式；两条页面共用
 │   ├── coop-coep.js            # 仅 Pages 的 WebGPU MT 入口用来补 COOP/COEP
 │   ├── .nojekyll               # 避免分支式 Pages 走 Jekyll
 │   ├── pkg/                    # WebGPU ST 生成物；gitignored
 │   ├── pkg-mt/                 # WebGPU MT 生成物及 Rayon worker snippet；gitignored
-│   └── pkg-webgl/              # WebGL 学习页生成物；gitignored
+│   ├── pkg-webgl/              # WebGL 编辑器生成物；gitignored
+│   ├── pkg-webgl-worker/       # webgl-mock present worker；gitignored
+│   └── pkg-webgpu-worker/      # webgpu-mock present worker；gitignored
 ├── .github/workflows/pages.yml # 构建 ST/MT 并发布 web/ 到 GitHub Pages
 └── xtask/                      # Rust 编写的构建编排和带隔离头的静态服务器
 ```
 
-不要手工修改 `web/pkg`、`web/pkg-mt` 或 `web/pkg-webgl`。它们是可重建产物并被 `.gitignore` 忽略；源代码改动应落在 Rust crate、`web/index.html`、`web/webgl.html`、`web/api-nav.css`、`web/coop-coep.js` 或 `xtask` 中。
+不要手工修改 `web/pkg`、`web/pkg-mt`、`web/pkg-webgl`、`web/pkg-webgl-worker` 或 `web/pkg-webgpu-worker`。它们是可重建产物并被 `.gitignore` 忽略。源代码改动应落在 Rust crate、`web/index.html`、`web/webgl.html`、`web/present-slots.js`、`web/webgl-worker.js`、`web/webgpu-worker.js`、`web/api-nav.css`、`web/coop-coep.js` 或 `xtask` 中。
 
 根 workspace 设置了 `default-members`，普通 `cargo test` 不会覆盖
 `glgpu-canvas2d`、`glgpu-web` 和 `xtask`。`glgpu-webgl-web` 的 native 测试在默认成员里。提交前使用 `--workspace`。
@@ -511,7 +513,7 @@ pkg-webgl/glgpu_webgl_web.js
 pkg-webgl/glgpu_webgl_web_bg.wasm
 ```
 
-CI 安装的工具与本指南的锁一致：Rust `1.93.0`、`wasm-pack 0.14.0`、`wasm-bindgen 0.2.127`，以及带 `rust-src` 的 `nightly-2025-11-15`。WebGPU ST 用 `cargo xtask build-web --release`，WebGPU MT 用 `cargo xtask build-web-mt`，WebGL 学习页用 `cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web`。
+CI 安装的工具与本指南的锁一致：Rust `1.93.0`、`wasm-pack 0.14.0`、`wasm-bindgen 0.2.127`，以及带 `rust-src` 的 `nightly-2025-11-15`。WebGPU ST 用 `cargo xtask build-web --release`，WebGPU MT 用 `cargo xtask build-web-mt`，WebGL 编辑器页用 `cargo xtask build-web --release --crate crates/glgpu-webgl-web --out-dir web/pkg-webgl --out-name glgpu_webgl_web`，两条 present worker 用 `cargo xtask build-present-workers`。
 
 启用站点：
 
@@ -529,7 +531,7 @@ GitHub Pages 和 `actions/deploy-pages` 都不能设置 COOP/COEP，`_headers` �
 | URL | 行为 |
 | --- | --- |
 | `/` 或 `/glgpu/` | 只加载 WebGPU ST。不注册 service worker。顶栏可重载到 WebGL 页 |
-| `/webgl.html` 或 `/glgpu/webgl.html` | 只加载 WebGL 学习页 Wasm。不注册 service worker |
+| `/webgl.html` 或 `/glgpu/webgl.html` | 只加载 WebGL demo 页 Wasm。不注册 service worker |
 | `/?threads=1` 且服务器已隔离 | 直接加载 WebGPU MT。`cargo xtask serve` 走这里 |
 | `/?threads=1` 且尚未隔离 | 注册 `coop-coep.js`，刷新一次，再加载 MT |
 | 隔离头被浏览器拒绝 | loader 记录警告并加载 ST |
@@ -587,7 +589,7 @@ web/pkg-webgl/glgpu_webgl_web_bg.wasm
 7. 提交前运行 workspace fmt、test 和 clippy gate。
 8. 若修改支持范围，同步更新 `docs/support-matrix/webgpu-p0.toml`；不要把仅在路线图中的能力写成已实现。
 
-WebGPU UI 的 DOM、样式和事件位于 `crates/glgpu-web`；WebGL 学习页位于 `crates/glgpu-webgl-web`。WebGPU 的 Canvas byte boundary 位于
+webgpu-mock UI 的 DOM、样式和事件位于 `crates/glgpu-web`；webgl-mock demo 页位于 `crates/glgpu-webgl-web`，当前在主线程运行。webgpu-mock 的 Canvas byte boundary 位于
 `glgpu-canvas2d`；WebGL 页在自己的壳里复制 RGBA8。`web/index.html` 继续只负责顶栏、mount point、能力检测、线程池初始化和 ST fallback。`web/webgl.html` 只负责顶栏和那一条 Wasm 启动。Pages 上的隔离注册放在 `web/coop-coep.js`，WebGL 页不注册它。不要把业务 UI 迁到手写 JavaScript。
 
 ## 13. 常见错误与排查
